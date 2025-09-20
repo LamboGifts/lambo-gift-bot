@@ -671,9 +671,32 @@ def webapp():
             border-radius: 20px; margin-bottom: 20px; overflow: hidden; border: 2px solid #ffd700;
             display: flex; align-items: center; justify-content: center;
         }
+        .rocket {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            font-size: 50px; transition: all 0.3s ease;
+            filter: drop-shadow(0 0 10px #ff6b35);
+        }
+        .rocket.flying {
+            animation: rocketFly 0.1s linear infinite;
+        }
+        @keyframes rocketFly {
+            0% { transform: translateX(-50%) rotate(-2deg); }
+            50% { transform: translateX(-50%) rotate(2deg); }
+            100% { transform: translateX(-50%) rotate(-2deg); }
+        }
+        .explosion {
+            display: none; position: absolute; font-size: 80px;
+            animation: explode 0.8s ease forwards;
+        }
+        @keyframes explode {
+            0% { transform: scale(0.2); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 1; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
         .multiplier { 
             font-size: 48px; font-weight: bold; color: #00ff00; 
             text-shadow: 0 0 20px #00ff00; transition: all 0.1s ease;
+            z-index: 10; position: relative;
         }
         .multiplier.crashed { color: #ff0000; text-shadow: 0 0 20px #ff0000; }
         .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
@@ -689,9 +712,15 @@ def webapp():
         .btn-bet { background: linear-gradient(45deg, #00ff00, #32cd32); color: #000; }
         .btn-cashout { background: linear-gradient(45deg, #ff6b6b, #ff4757); color: #fff; }
         .btn:disabled { background: rgba(255,255,255,0.3); cursor: not-allowed; }
+        .btn:hover:not(:disabled) { transform: translateY(-2px); }
         .game-info { 
             background: rgba(255,255,255,0.1); padding: 15px; 
             border-radius: 15px; margin-bottom: 20px; 
+        }
+        .trail {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 4px; height: 0; background: linear-gradient(to top, #ff6b35, transparent);
+            transition: height 0.1s ease;
         }
     </style>
 </head>
@@ -702,7 +731,10 @@ def webapp():
             <div>🚀 Crash Game</div>
         </div>
         
-        <div class="crash-display">
+        <div class="crash-display" id="gameArea">
+            <div class="trail" id="trail"></div>
+            <div class="rocket" id="rocket">🚀</div>
+            <div class="explosion" id="explosion">💥</div>
             <div class="multiplier" id="multiplier">1.00x</div>
         </div>
         
@@ -731,6 +763,69 @@ def webapp():
             isPlaying: false, gameRunning: false
         };
         
+        const rocket = document.getElementById("rocket");
+        const explosion = document.getElementById("explosion");
+        const trail = document.getElementById("trail");
+        let rocketSound, crashSound;
+        
+        // Создаем звуковые эффекты
+        function createSounds() {
+            // Звук ракеты (высокочастотный гул)
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            rocketSound = {
+                context: audioContext,
+                oscillator: null,
+                gainNode: null,
+                start: function() {
+                    this.oscillator = this.context.createOscillator();
+                    this.gainNode = this.context.createGain();
+                    
+                    this.oscillator.connect(this.gainNode);
+                    this.gainNode.connect(this.context.destination);
+                    
+                    this.oscillator.frequency.setValueAtTime(200, this.context.currentTime);
+                    this.gainNode.gain.setValueAtTime(0.1, this.context.currentTime);
+                    
+                    this.oscillator.start();
+                },
+                stop: function() {
+                    if (this.oscillator) {
+                        this.gainNode.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.1);
+                        this.oscillator.stop(this.context.currentTime + 0.1);
+                        this.oscillator = null;
+                    }
+                },
+                updatePitch: function(multiplier) {
+                    if (this.oscillator) {
+                        this.oscillator.frequency.setValueAtTime(200 + (multiplier * 50), this.context.currentTime);
+                    }
+                }
+            };
+            
+            // Звук взрыва
+            crashSound = {
+                context: audioContext,
+                play: function() {
+                    const oscillator = this.context.createOscillator();
+                    const gainNode = this.context.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(this.context.destination);
+                    
+                    oscillator.type = "sawtooth";
+                    oscillator.frequency.setValueAtTime(100, this.context.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(20, this.context.currentTime + 0.5);
+                    
+                    gainNode.gain.setValueAtTime(0.3, this.context.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.5);
+                    
+                    oscillator.start();
+                    oscillator.stop(this.context.currentTime + 0.5);
+                }
+            };
+        }
+        
         function updateDisplay() {
             document.getElementById("balance").textContent = gameData.balance;
             document.getElementById("multiplier").textContent = gameData.multiplier.toFixed(2) + "x";
@@ -739,6 +834,19 @@ def webapp():
             if (gameData.currentBet) {
                 const potential = Math.floor(gameData.currentBet * gameData.multiplier);
                 document.getElementById("potentialWin").textContent = potential + " монет";
+            }
+        }
+        
+        function updateRocketPosition(multiplier) {
+            const maxHeight = 250;
+            const height = Math.min((multiplier - 1) * 80, maxHeight);
+            
+            rocket.style.bottom = (20 + height) + "px";
+            trail.style.height = height + "px";
+            
+            // Обновляем звук ракеты
+            if (rocketSound && rocketSound.oscillator) {
+                rocketSound.updatePitch(multiplier);
             }
         }
         
@@ -777,6 +885,13 @@ def webapp():
             gameData.multiplier = 1.0;
             gameData.gameRunning = false;
             
+            // Сброс позиции ракеты
+            rocket.style.bottom = "20px";
+            rocket.classList.remove("flying");
+            trail.style.height = "0px";
+            rocket.style.display = "block";
+            explosion.style.display = "none";
+            
             document.getElementById("betButton").disabled = false;
             document.getElementById("cashoutButton").disabled = true;
             document.getElementById("gameStatus").textContent = "Прием ставок...";
@@ -786,10 +901,16 @@ def webapp():
                 document.getElementById("betButton").disabled = true;
                 document.getElementById("gameStatus").textContent = "Игра началась!";
                 
+                // Запуск звука ракеты
+                if (!rocketSound) createSounds();
+                rocketSound.start();
+                rocket.classList.add("flying");
+                
                 const crashPoint = Math.random() * 3 + 1.01;
                 
                 const gameInterval = setInterval(function() {
                     gameData.multiplier += 0.01 + (gameData.multiplier * 0.001);
+                    updateRocketPosition(gameData.multiplier);
                     
                     if (gameData.multiplier >= crashPoint) {
                         crash();
@@ -804,6 +925,17 @@ def webapp():
         
         function crash() {
             gameData.gameRunning = false;
+            
+            // Остановка звука ракеты и запуск звука взрыва
+            if (rocketSound) rocketSound.stop();
+            if (crashSound) crashSound.play();
+            
+            rocket.classList.remove("flying");
+            rocket.style.display = "none";
+            explosion.style.display = "block";
+            explosion.style.bottom = rocket.style.bottom;
+            explosion.style.left = "50%";
+            explosion.style.transform = "translateX(-50%)";
             
             const multiplierElement = document.getElementById("multiplier");
             multiplierElement.classList.add("crashed");
