@@ -666,6 +666,19 @@ def webapp():
             border: 1px solid rgba(255,255,255,0.2);
         }
         .balance { font-size: 20px; font-weight: bold; color: #ffd700; }
+        .nav-tabs {
+            display: flex; background: rgba(255,255,255,0.1); border-radius: 15px;
+            margin-bottom: 20px; padding: 5px;
+        }
+        .nav-tab {
+            flex: 1; padding: 12px; text-align: center; border-radius: 10px;
+            cursor: pointer; transition: all 0.3s ease; font-weight: bold;
+        }
+        .nav-tab.active {
+            background: linear-gradient(45deg, #667eea, #764ba2); color: white;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
         .crash-display {
             position: relative; height: 300px; background: linear-gradient(45deg, #1e3c72, #2a5298);
             border-radius: 20px; margin-bottom: 20px; overflow: hidden; border: 2px solid #ffd700;
@@ -722,33 +735,151 @@ def webapp():
             width: 4px; height: 0; background: linear-gradient(to top, #ff6b35, transparent);
             transition: height 0.1s ease;
         }
+        
+        /* Стили для кейсов */
+        .cases-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;
+            margin-bottom: 20px;
+        }
+        .case-item {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 15px; padding: 20px; text-align: center;
+            cursor: pointer; transition: all 0.3s ease; position: relative;
+            overflow: hidden; border: 2px solid transparent;
+        }
+        .case-item:hover {
+            transform: translateY(-5px); border-color: #ffd700;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        .case-item.opening {
+            animation: caseShake 0.8s ease-in-out;
+        }
+        @keyframes caseShake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px) rotate(-2deg); }
+            75% { transform: translateX(5px) rotate(2deg); }
+        }
+        .case-emoji {
+            font-size: 40px; display: block; margin-bottom: 10px;
+        }
+        .case-name {
+            font-weight: bold; margin-bottom: 5px; font-size: 14px;
+        }
+        .case-price {
+            color: #ffd700; font-weight: bold;
+        }
+        .case-rarity {
+            position: absolute; top: 5px; right: 5px;
+            padding: 2px 8px; border-radius: 10px; font-size: 10px;
+            font-weight: bold; text-transform: uppercase;
+        }
+        .rarity-common { background: #95a5a6; }
+        .rarity-uncommon { background: #2ecc71; }
+        .rarity-rare { background: #3498db; }
+        .rarity-epic { background: #9b59b6; }
+        .rarity-legendary { background: #f39c12; }
+        .rarity-mythic { background: #e74c3c; }
+        
+        .opening-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: none; align-items: center;
+            justify-content: center; z-index: 1000;
+        }
+        .opening-animation {
+            text-align: center; animation: openingPulse 2s ease-in-out;
+        }
+        .opening-case {
+            font-size: 100px; animation: caseOpen 2s ease-in-out;
+        }
+        .opening-result {
+            opacity: 0; animation: resultReveal 0.5s ease forwards 2s;
+        }
+        @keyframes caseOpen {
+            0% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.5) rotate(180deg); }
+            100% { transform: scale(1) rotate(360deg); }
+        }
+        @keyframes resultReveal {
+            to { opacity: 1; transform: scale(1.2); }
+        }
+        @keyframes openingPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        
+        .result-item {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            border-radius: 20px; padding: 30px; margin: 20px;
+        }
+        .result-emoji { font-size: 80px; margin-bottom: 15px; }
+        .result-name { font-size: 20px; font-weight: bold; margin-bottom: 10px; }
+        .result-rarity { 
+            padding: 5px 15px; border-radius: 15px; display: inline-block;
+            margin-bottom: 15px; text-transform: uppercase; font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="game-header">
             <div class="balance">💰 <span id="balance">1000</span> монет</div>
-            <div>🚀 Crash Game</div>
+            <div>🎁 GiftBot Game</div>
         </div>
         
-        <div class="crash-display" id="gameArea">
-            <div class="trail" id="trail"></div>
-            <div class="rocket" id="rocket">🚀</div>
-            <div class="explosion" id="explosion">💥</div>
-            <div class="multiplier" id="multiplier">1.00x</div>
+        <div class="nav-tabs">
+            <div class="nav-tab active" onclick="switchTab('crash')">🚀 Crash</div>
+            <div class="nav-tab" onclick="switchTab('cases')">📦 Кейсы</div>
         </div>
         
-        <div class="controls">
-            <input type="number" class="bet-input" id="betAmount" placeholder="Ставка" min="1" value="10">
-            <button class="btn btn-bet" id="betButton" onclick="placeBet()">Ставка</button>
-            <input type="number" class="bet-input" id="autoCashout" placeholder="Авто-вывод" min="1.01" step="0.01">
-            <button class="btn btn-cashout" id="cashoutButton" onclick="cashOut()" disabled>Вывести</button>
+        <!-- Crash Game Tab -->
+        <div id="crash-tab" class="tab-content active">
+            <div class="crash-display" id="gameArea">
+                <div class="trail" id="trail"></div>
+                <div class="rocket" id="rocket">🚀</div>
+                <div class="explosion" id="explosion">💥</div>
+                <div class="multiplier" id="multiplier">1.00x</div>
+            </div>
+            
+            <div class="controls">
+                <input type="number" class="bet-input" id="betAmount" placeholder="Ставка" min="1" value="10">
+                <button class="btn btn-bet" id="betButton" onclick="placeBet()">Ставка</button>
+                <input type="number" class="bet-input" id="autoCashout" placeholder="Авто-вывод" min="1.01" step="0.01">
+                <button class="btn btn-cashout" id="cashoutButton" onclick="cashOut()" disabled>Вывести</button>
+            </div>
+            
+            <div class="game-info">
+                <div>Статус: <span id="gameStatus">Ожидание...</span></div>
+                <div>Ваша ставка: <span id="currentBet">-</span></div>
+                <div>Потенциальный выигрыш: <span id="potentialWin">-</span></div>
+            </div>
         </div>
         
-        <div class="game-info">
-            <div>Статус: <span id="gameStatus">Ожидание...</span></div>
-            <div>Ваша ставка: <span id="currentBet">-</span></div>
-            <div>Потенциальный выигрыш: <span id="potentialWin">-</span></div>
+        <!-- Cases Tab -->
+        <div id="cases-tab" class="tab-content">
+            <div class="cases-grid" id="casesGrid">
+                <!-- Cases will be generated here -->
+            </div>
+            
+            <div class="game-info">
+                <div>💎 Инвентарь: <span id="inventoryCount">0</span> предметов</div>
+                <div>🎁 Открыто кейсов: <span id="casesOpened">0</span></div>
+            </div>
+        </div>
+        
+        <!-- Opening Modal -->
+        <div class="opening-modal" id="openingModal">
+            <div class="opening-animation">
+                <div class="opening-case" id="openingCase">📦</div>
+                <div>Открываем кейс...</div>
+                <div class="opening-result" id="openingResult">
+                    <div class="result-item">
+                        <div class="result-emoji" id="resultEmoji">🎁</div>
+                        <div class="result-name" id="resultName">Подарок</div>
+                        <div class="result-rarity" id="resultRarity">common</div>
+                        <button class="btn" onclick="closeModal()">Забрать</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -760,67 +891,319 @@ def webapp():
         
         let gameData = {
             balance: 1000, currentBet: 0, multiplier: 1.0,
-            isPlaying: false, gameRunning: false
+            isPlaying: false, gameRunning: false, casesOpened: 0, inventory: []
         };
         
         const rocket = document.getElementById("rocket");
         const explosion = document.getElementById("explosion");
         const trail = document.getElementById("trail");
-        let rocketSound, crashSound;
+        let rocketSound, crashSound, openSound;
+        
+        // Кейсы с подарками
+        const cases = {
+            starterBox: {
+                name: "Стартер Бокс", emoji: "📦", price: 50,
+                items: [
+                    {name: "Вкусный торт", emoji: "🎂", rarity: "common", chance: 40},
+                    {name: "Зеленая звезда", emoji: "💚", rarity: "common", chance: 30},
+                    {name: "Фейерверк", emoji: "🎆", rarity: "uncommon", chance: 20},
+                    {name: "Синяя звезда", emoji: "💙", rarity: "uncommon", chance: 8},
+                    {name: "Красное сердце", emoji: "❤️", rarity: "rare", chance: 2}
+                ]
+            },
+            premiumBox: {
+                name: "Премиум Бокс", emoji: "🎁", price: 150,
+                items: [
+                    {name: "Фейерверк", emoji: "🎆", rarity: "uncommon", chance: 35},
+                    {name: "Синяя звезда", emoji: "💙", rarity: "uncommon", chance: 25},
+                    {name: "Красное сердце", emoji: "❤️", rarity: "rare", chance: 20},
+                    {name: "Золото Премиум", emoji: "👑", rarity: "epic", chance: 15},
+                    {name: "Платина Премиум", emoji: "💎", rarity: "legendary", chance: 5}
+                ]
+            },
+            mysticalBox: {
+                name: "Мистический Бокс", emoji: "🔮", price: 400,
+                items: [
+                    {name: "Красное сердце", emoji: "❤️", rarity: "rare", chance: 30},
+                    {name: "Золото Премиум", emoji: "👑", rarity: "epic", chance: 25},
+                    {name: "Платина Премиум", emoji: "💎", rarity: "legendary", chance: 20},
+                    {name: "Лимитированный подарок", emoji: "🔮", rarity: "mythic", chance: 15},
+                    {name: "Космический подарок", emoji: "🌌", rarity: "mythic", chance: 10}
+                ]
+            },
+            legendaryBox: {
+                name: "Легендарный Бокс", emoji: "⭐", price: 800,
+                items: [
+                    {name: "Золото Премиум", emoji: "👑", rarity: "epic", chance: 30},
+                    {name: "Платина Премиум", emoji: "💎", rarity: "legendary", chance: 25},
+                    {name: "Лимитированный подарок", emoji: "🔮", rarity: "mythic", chance: 20},
+                    {name: "Космический подарок", emoji: "🌌", rarity: "mythic", chance: 15},
+                    {name: "Божественный дар", emoji: "✨", rarity: "mythic", chance: 10}
+                ]
+            }
+        };
+        
+        function switchTab(tab) {
+            document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
+            document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
+            
+            document.querySelector(`[onclick="switchTab('${tab}')"]`).classList.add("active");
+            document.getElementById(tab + "-tab").classList.add("active");
+            
+            if (tab === "cases") {
+                generateCases();
+            }
+        }
+        
+        function generateCases() {
+            const grid = document.getElementById("casesGrid");
+            grid.innerHTML = "";
+            
+            Object.keys(cases).forEach(caseId => {
+                const caseData = cases[caseId];
+                const caseElement = document.createElement("div");
+                caseElement.className = "case-item";
+                caseElement.onclick = () => openCase(caseId);
+                
+                const rarity = getRarityFromPrice(caseData.price);
+                
+                caseElement.innerHTML = `
+                    <div class="case-rarity rarity-${rarity}">${rarity}</div>
+                    <div class="case-emoji">${caseData.emoji}</div>
+                    <div class="case-name">${caseData.name}</div>
+                    <div class="case-price">${caseData.price} монет</div>
+                `;
+                
+                grid.appendChild(caseElement);
+            });
+        }
+        
+        function getRarityFromPrice(price) {
+            if (price <= 100) return "common";
+            if (price <= 200) return "uncommon";
+            if (price <= 400) return "rare";
+            if (price <= 600) return "epic";
+            if (price <= 800) return "legendary";
+            return "mythic";
+        }
+        
+        function openCase(caseId) {
+            const caseData = cases[caseId];
+            
+            if (gameData.balance < caseData.price) {
+                alert("Недостаточно монет!");
+                return;
+            }
+            
+            gameData.balance -= caseData.price;
+            updateDisplay();
+            
+            const caseElement = event.target.closest(".case-item");
+            caseElement.classList.add("opening");
+            
+            // Звук открытия кейса
+            playOpenSound();
+            
+            setTimeout(() => {
+                const result = getRandomItem(caseData.items);
+                gameData.inventory.push(result);
+                gameData.casesOpened++;
+                
+                showOpeningModal(caseData.emoji, result);
+                caseElement.classList.remove("opening");
+            }, 1000);
+        }
+        
+        function getRandomItem(items) {
+            const totalChance = items.reduce((sum, item) => sum + item.chance, 0);
+            const random = Math.random() * totalChance;
+            
+            let currentChance = 0;
+            for (const item of items) {
+                currentChance += item.chance;
+                if (random <= currentChance) {
+                    return item;
+                }
+            }
+            return items[0];
+        }
+        
+        function showOpeningModal(caseEmoji, result) {
+            const modal = document.getElementById("openingModal");
+            const openingCase = document.getElementById("openingCase");
+            const resultEmoji = document.getElementById("resultEmoji");
+            const resultName = document.getElementById("resultName");
+            const resultRarity = document.getElementById("resultRarity");
+            
+            openingCase.textContent = caseEmoji;
+            resultEmoji.textContent = result.emoji;
+            resultName.textContent = result.name;
+            resultRarity.textContent = result.rarity.toUpperCase();
+            resultRarity.className = `result-rarity rarity-${result.rarity}`;
+            
+            modal.style.display = "flex";
+            
+            // Звук получения предмета
+            setTimeout(() => {
+                playRewardSound(result.rarity);
+            }, 2000);
+        }
+        
+        function closeModal() {
+            document.getElementById("openingModal").style.display = "none";
+            document.getElementById("inventoryCount").textContent = gameData.inventory.length;
+            document.getElementById("casesOpened").textContent = gameData.casesOpened;
+        }
+        
+        function playOpenSound() {
+            if (!openSound) {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                openSound = {
+                    context: audioContext,
+                    play: function() {
+                        const oscillator = this.context.createOscillator();
+                        const gainNode = this.context.createGain();
+                        
+                        oscillator.connect(gainNode);
+                        gainNode.connect(this.context.destination);
+                        
+                        oscillator.type = "sine";
+                        oscillator.frequency.setValueAtTime(600, this.context.currentTime);
+                        oscillator.frequency.exponentialRampToValueAtTime(800, this.context.currentTime + 0.3);
+                        
+                        gainNode.gain.setValueAtTime(0.2, this.context.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.3);
+                        
+                        oscillator.start();
+                        oscillator.stop(this.context.currentTime + 0.3);
+                    }
+                };
+            }
+            openSound.play();
+        }
+        
+        function playRewardSound(rarity) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            let frequencies = [440, 550, 660]; // default
+            
+            switch(rarity) {
+                case "uncommon": frequencies = [523, 659, 784]; break;
+                case "rare": frequencies = [659, 784, 988]; break;
+                case "epic": frequencies = [784, 988, 1175]; break;
+                case "legendary": frequencies = [988, 1175, 1397]; break;
+                case "mythic": frequencies = [1175, 1397, 1661]; break;
+            }
+            
+            frequencies.forEach((freq, i) => {
+                setTimeout(() => {
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    oscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+                    
+                    oscillator.start();
+                    oscillator.stop(audioContext.currentTime + 0.4);
+                }, i * 100);
+            });
+        }
         
         // Создаем звуковые эффекты
         function createSounds() {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             
-            // Звук ракеты - имитация турбины с модуляцией
+            // Звук ракеты - реалистичный рев двигателя с шумом
             rocketSound = {
                 context: audioContext,
-                oscillator1: null,
-                oscillator2: null,
+                noiseSource: null,
+                lowOsc: null,
+                midOsc: null,
                 gainNode: null,
+                noiseGain: null,
                 filterNode: null,
                 start: function() {
-                    // Основной тон
-                    this.oscillator1 = this.context.createOscillator();
-                    this.oscillator2 = this.context.createOscillator();
-                    this.gainNode = this.context.createGain();
+                    // Создаем белый шум для основы звука ракеты
+                    const bufferSize = this.context.sampleRate * 2;
+                    const buffer = this.context.createBuffer(1, bufferSize, this.context.sampleRate);
+                    const output = buffer.getChannelData(0);
+                    
+                    // Генерируем шум с неравномерным распределением
+                    for (let i = 0; i < bufferSize; i++) {
+                        output[i] = (Math.random() * 2 - 1) * (0.3 + Math.sin(i * 0.01) * 0.2);
+                    }
+                    
+                    this.noiseSource = this.context.createBufferSource();
+                    this.noiseSource.buffer = buffer;
+                    this.noiseSource.loop = true;
+                    
+                    // Низкочастотный компонент (рев двигателя)
+                    this.lowOsc = this.context.createOscillator();
+                    this.lowOsc.type = "sawtooth";
+                    
+                    // Среднечастотный компонент (горение топлива)
+                    this.midOsc = this.context.createOscillator();
+                    this.midOsc.type = "triangle";
+                    
+                    // Фильтры и усилители
                     this.filterNode = this.context.createBiquadFilter();
+                    this.filterNode.type = "bandpass";
+                    this.filterNode.frequency.setValueAtTime(300, this.context.currentTime);
+                    this.filterNode.Q.setValueAtTime(2, this.context.currentTime);
                     
-                    this.oscillator1.type = "triangle";
-                    this.oscillator2.type = "sawtooth";
-                    this.filterNode.type = "lowpass";
+                    this.gainNode = this.context.createGain();
+                    this.noiseGain = this.context.createGain();
                     
-                    this.oscillator1.connect(this.filterNode);
-                    this.oscillator2.connect(this.filterNode);
-                    this.filterNode.connect(this.gainNode);
+                    // Соединяем цепь
+                    this.noiseSource.connect(this.filterNode);
+                    this.filterNode.connect(this.noiseGain);
+                    this.lowOsc.connect(this.gainNode);
+                    this.midOsc.connect(this.gainNode);
+                    this.noiseGain.connect(this.context.destination);
                     this.gainNode.connect(this.context.destination);
                     
-                    this.oscillator1.frequency.setValueAtTime(80, this.context.currentTime);
-                    this.oscillator2.frequency.setValueAtTime(160, this.context.currentTime);
-                    this.filterNode.frequency.setValueAtTime(400, this.context.currentTime);
-                    this.gainNode.gain.setValueAtTime(0.15, this.context.currentTime);
+                    // Устанавливаем начальные параметры
+                    this.lowOsc.frequency.setValueAtTime(50, this.context.currentTime);
+                    this.midOsc.frequency.setValueAtTime(150, this.context.currentTime);
+                    this.gainNode.gain.setValueAtTime(0.08, this.context.currentTime);
+                    this.noiseGain.gain.setValueAtTime(0.12, this.context.currentTime);
                     
-                    this.oscillator1.start();
-                    this.oscillator2.start();
+                    // Запускаем все источники
+                    this.noiseSource.start();
+                    this.lowOsc.start();
+                    this.midOsc.start();
                 },
                 stop: function() {
-                    if (this.oscillator1 && this.oscillator2) {
-                        this.gainNode.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.2);
-                        this.oscillator1.stop(this.context.currentTime + 0.2);
-                        this.oscillator2.stop(this.context.currentTime + 0.2);
-                        this.oscillator1 = null;
-                        this.oscillator2 = null;
+                    if (this.noiseSource && this.lowOsc && this.midOsc) {
+                        this.gainNode.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.3);
+                        this.noiseGain.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.3);
+                        
+                        this.noiseSource.stop(this.context.currentTime + 0.3);
+                        this.lowOsc.stop(this.context.currentTime + 0.3);
+                        this.midOsc.stop(this.context.currentTime + 0.3);
+                        
+                        this.noiseSource = null;
+                        this.lowOsc = null;
+                        this.midOsc = null;
                     }
                 },
                 updatePitch: function(multiplier) {
-                    if (this.oscillator1 && this.oscillator2) {
-                        const freq1 = 80 + (multiplier * 20);
-                        const freq2 = 160 + (multiplier * 40);
-                        const filterFreq = 400 + (multiplier * 100);
+                    if (this.lowOsc && this.midOsc && this.filterNode) {
+                        // Увеличиваем частоты и интенсивность с ростом множителя
+                        const lowFreq = 50 + (multiplier * 15);
+                        const midFreq = 150 + (multiplier * 30);
+                        const filterFreq = 300 + (multiplier * 80);
+                        const intensity = 0.08 + (multiplier * 0.02);
+                        const noiseIntensity = 0.12 + (multiplier * 0.03);
                         
-                        this.oscillator1.frequency.setValueAtTime(freq1, this.context.currentTime);
-                        this.oscillator2.frequency.setValueAtTime(freq2, this.context.currentTime);
+                        this.lowOsc.frequency.setValueAtTime(lowFreq, this.context.currentTime);
+                        this.midOsc.frequency.setValueAtTime(midFreq, this.context.currentTime);
                         this.filterNode.frequency.setValueAtTime(filterFreq, this.context.currentTime);
+                        this.gainNode.gain.setValueAtTime(intensity, this.context.currentTime);
+                        this.noiseGain.gain.setValueAtTime(noiseIntensity, this.context.currentTime);
                     }
                 }
             };
