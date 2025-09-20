@@ -749,4 +749,281 @@ def open_case(chat_id, message_id, case_id):
 💰 <b>Баланс:</b> {user_data['balance']} монет
 💸 <b>Нужно:</b> {case['price']} монет
 
-{case['emoji']} <b>{
+{case['emoji']} <b>{case['name']}</b>"""
+        edit_message(chat_id, message_id, text, keyboard)
+        return
+    
+    # Покупаем кейс
+    user_data['balance'] -= case['price']
+    user_data['cases_opened'] += 1
+    
+    # Определяем выигрышный подарок
+    winner_item_data = get_random_item_from_case(case)
+    gift_data = REAL_TELEGRAM_GIFTS[winner_item_data['id']]
+    
+    # Добавляем в инвентарь
+    if 'inventory' not in user_data:
+        user_data['inventory'] = {}
+    
+    gift_id = winner_item_data['id']
+    if gift_id not in user_data['inventory']:
+        user_data['inventory'][gift_id] = 0
+    user_data['inventory'][gift_id] += 1
+    
+    # Добавляем опыт
+    user_data['experience'] += gift_data['stars'] // 10
+    
+    # Показываем результат
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "🎁 Открыть еще", "callback_data": f"open_{case_id}"}],
+            [{"text": "🔙 К кейсам", "callback_data": "gift_shop"}]
+        ]
+    }
+    
+    rarity = get_rarity_from_stars(gift_data['stars'])
+    rarity_names = {
+        "common": "⚪ Обычный",
+        "uncommon": "🟢 Необычный", 
+        "rare": "🔵 Редкий",
+        "epic": "🟣 Эпический",
+        "legendary": "🟡 Легендарный",
+        "mythic": "🔴 Мифический"
+    }
+    
+    text = f"""🎉 <b>Кейс открыт!</b>
+
+{gift_data['emoji']} <b>{gift_data['name']}</b>
+⭐ <b>Стоимость:</b> {gift_data['stars']} звезд
+{rarity_names[rarity]} <b>({rarity.upper()})</b>
+
+💰 <b>Новый баланс:</b> {user_data['balance']} монет
+📦 <b>Кейсов открыто:</b> {user_data['cases_opened']}
+
+🎁 <b>Подарок добавлен в инвентарь!</b>"""
+    
+    edit_message(chat_id, message_id, text, keyboard)
+
+def get_random_item_from_case(case):
+    """Получить случайный предмет из кейса с учетом шансов"""
+    total_chance = sum(item['chance'] for item in case['items'])
+    random_value = random.random() * total_chance
+    
+    current_chance = 0
+    for item in case['items']:
+        current_chance += item['chance']
+        if random_value <= current_chance:
+            return item
+    
+    return case['items'][0]  # fallback
+
+def get_rarity_from_stars(stars):
+    """Определить редкость по количеству звезд"""
+    if stars <= 25:
+        return "common"
+    elif stars <= 100:
+        return "uncommon"
+    elif stars <= 500:
+        return "rare"
+    elif stars <= 1000:
+        return "epic"
+    elif stars <= 2000:
+        return "legendary"
+    else:
+        return "mythic"
+
+def handle_daily_bonus(chat_id, message_id):
+    user_data = get_user_data(chat_id)
+    
+    # Проверяем, можно ли получить бонус
+    now = datetime.now()
+    last_bonus = user_data.get('last_bonus')
+    
+    if last_bonus:
+        last_bonus_date = datetime.fromisoformat(last_bonus)
+        if (now - last_bonus_date).days < 1:
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🔙 Назад", "callback_data": "main"}]
+                ]
+            }
+            hours_left = 24 - (now - last_bonus_date).seconds // 3600
+            text = f"""⏰ <b>Ежедневный бонус уже получен!</b>
+
+Следующий бонус через {hours_left} часов
+
+💰 <b>Текущий баланс:</b> {user_data['balance']} монет"""
+            edit_message(chat_id, message_id, text, keyboard)
+            return
+    
+    # Выдаем бонус
+    bonus_amount = random.randint(100, 500)
+    user_data['balance'] += bonus_amount
+    user_data['last_bonus'] = now.isoformat()
+    user_data['experience'] += 50
+    
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "🚀 Играть", "callback_data": "play_crash"}],
+            [{"text": "🏠 Главное меню", "callback_data": "main"}]
+        ]
+    }
+    
+    text = f"""🎉 <b>Ежедневный бонус получен!</b>
+
+💰 <b>Получено:</b> {bonus_amount} монет
+⭐ <b>Получено XP:</b> 50
+💳 <b>Новый баланс:</b> {user_data['balance']} монет
+
+🎁 Возвращайтесь завтра за новым бонусом!"""
+
+    edit_message(chat_id, message_id, text, keyboard)
+
+def game_loop():
+    global current_crash_game
+    
+    while True:
+        try:
+            with game_lock:
+                current_crash_game = CrashGame()
+                
+                # Ожидание между играми
+                time.sleep(10)
+                
+                # Запуск новой игры
+                current_crash_game.start_round()
+                
+                # Игровой цикл
+                while current_crash_game.is_running and not current_crash_game.is_crashed:
+                    current_crash_game.update_multiplier()
+                    
+                    # Проверка авто-вывода
+                    for user_id in list(current_crash_game.bets.keys()):
+                        bet_info = current_crash_game.bets[user_id]
+                        if (bet_info.get('auto_cashout') and 
+                            current_crash_game.multiplier >= bet_info['auto_cashout'] and
+                            user_id not in current_crash_game.cashed_out):
+                            current_crash_game.cashout(user_id)
+                    
+                    time.sleep(0.1)
+                
+                # Обеспечиваем краш если игра завершилась не крашем
+                if not current_crash_game.is_crashed:
+                    current_crash_game.crash()
+                
+                # Пауза после краша
+                time.sleep(10)
+                
+        except Exception as e:
+            logger.error(f"Game loop error: {e}")
+            time.sleep(5)
+
+# Запуск игрового цикла в отдельном потоке
+game_thread = threading.Thread(target=game_loop)
+game_thread.daemon = True
+game_thread.start()
+
+@app.route("/")
+def home():
+    return """
+    <h1>🎁 GiftBot Crash Game 🚀</h1>
+    <p>Telegram bot в стиле GiftUp</p>
+    """
+
+def handle_webhook_callback(chat_id, message_id, callback_data, user_name):
+    try:
+        if callback_data == "main":
+            user_data = get_user_data(chat_id)
+            text = f"""🎁 <b>GiftBot - {user_name}</b>
+
+💰 <b>Баланс:</b> {user_data['balance']} монет
+🎯 <b>Уровень:</b> {user_data['level']} ({user_data['experience']} XP)
+
+Выберите действие:"""
+            edit_message(chat_id, message_id, text, main_menu_keyboard())
+            
+        elif callback_data == "play_crash":
+            handle_crash_game(chat_id, message_id)
+            
+        elif callback_data.startswith("bet_"):
+            amount = int(callback_data.split("_")[1])
+            handle_bet(chat_id, message_id, amount)
+            
+        elif callback_data == "cashout":
+            handle_cashout(chat_id, "")
+            handle_crash_game(chat_id, message_id)
+            
+        elif callback_data == "gift_shop":
+            handle_gift_shop(chat_id, message_id)
+            
+        elif callback_data.startswith("open_"):
+            case_id = callback_data.replace("open_", "")
+            open_case(chat_id, message_id, case_id)
+            
+        elif callback_data == "daily_bonus":
+            handle_daily_bonus(chat_id, message_id)
+            
+        elif callback_data in ["balance", "stats"]:
+            user_data = get_user_data(chat_id)
+            win_rate = (user_data['games_won'] / max(user_data['games_played'], 1)) * 100
+            
+            inventory_count = sum(user_data.get('inventory', {}).values())
+            total_stars = 0
+            for gift_id, count in user_data.get('inventory', {}).items():
+                if gift_id in REAL_TELEGRAM_GIFTS:
+                    total_stars += REAL_TELEGRAM_GIFTS[gift_id]['stars'] * count
+            
+            text = f"""📊 <b>Статистика - {user_name}</b>
+
+💰 <b>Баланс:</b> {user_data['balance']} монет
+🎯 <b>Уровень:</b> {user_data['level']} (XP: {user_data['experience']})
+
+🎮 <b>Игровая статистика:</b>
+• Игр сыграно: {user_data['games_played']}
+• Побед: {user_data['games_won']}
+• Поражений: {user_data['games_lost']}
+• Винрейт: {win_rate:.1f}%
+
+💸 <b>Финансы:</b>
+• Поставлено: {user_data['total_bet']} монет
+• Выиграно: {user_data['total_won']} монет
+• Потеряно: {user_data['total_lost']} монет
+
+🎁 <b>Коллекция:</b>
+• Подарков: {inventory_count}
+• Кейсов открыто: {user_data.get('cases_opened', 0)}
+• Общая стоимость: {total_stars} звезд"""
+
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🚀 Играть", "callback_data": "play_crash"}],
+                    [{"text": "🔙 Назад", "callback_data": "main"}]
+                ]
+            }
+            edit_message(chat_id, message_id, text, keyboard)
+            
+        elif callback_data == "referrals":
+            user_data = get_user_data(chat_id)
+            referral_count = len(user_data.get('referrals', []))
+            
+            text = f"""👥 <b>Реферальная система</b>
+
+👥 <b>Ваши рефералы:</b> {referral_count}
+💰 <b>Заработано:</b> {referral_count * 500} монет
+
+🔗 <b>Ваша реферальная ссылка:</b>
+https://t.me/lambo_gift_bot?start={chat_id}
+
+💡 <b>За каждого реферала:</b>
+• Вы получаете 500 монет
+• Реферал получает 200 монет"""
+
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🔙 Назад", "callback_data": "main"}]
+                ]
+            }
+            edit_message(chat_id, message_id, text, keyboard)
+            
+    except Exception as e:
+        logger.error(f"Callback handling error: {e}")
