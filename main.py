@@ -500,49 +500,146 @@ def webapp():
             100% { top: 180px; transform: translateX(-40px); }
         }
 
-        .bet-buttons {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
+        .bet-input-section {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 15px;
             margin-bottom: 20px;
+            text-align: center;
         }
 
-        .bet-btn {
-            background: rgba(76, 175, 80, 0.3);
-            border: 2px solid #4caf50;
+        .bet-input {
+            width: 120px;
+            padding: 10px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.1);
             color: #fff;
-            padding: 15px;
-            border-radius: 12px;
+            font-size: 16px;
+            margin: 10px;
+            text-align: center;
+        }
+
+        .bet-btn-custom {
+            background: linear-gradient(45deg, #4caf50, #45a049);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 16px;
             transition: all 0.3s ease;
         }
 
-        .bet-btn:hover {
-            background: rgba(76, 175, 80, 0.5);
-            transform: scale(1.05);
+        .bet-btn-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
 
-        .bet-btn:disabled {
-            background: rgba(255,255,255,0.1);
-            border-color: rgba(255,255,255,0.3);
-            color: rgba(255,255,255,0.5);
+        .bet-btn-custom:disabled {
+            background: rgba(255,255,255,0.3);
             cursor: not-allowed;
             transform: none;
         }
 
-        .multipliers {
-            display: flex;
-            justify-content: space-between;
-            margin: 15px 0;
+        .plinko-visual {
+            position: relative;
+            background: rgba(0,0,0,0.3);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .plinko-pegs {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .peg-row {
             font-size: 14px;
+            line-height: 20px;
+            color: rgba(255,255,255,0.6);
+            letter-spacing: 15px;
+        }
+
+        .plinko-animation {
+            height: 120px;
+            position: relative;
+            margin: 15px 0;
+            border-radius: 10px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        }
+
+        .plinko-ball {
+            width: 16px;
+            height: 16px;
+            background: radial-gradient(circle at 30% 30%, #ffeb3b, #ffc107);
+            border-radius: 50%;
+            position: absolute;
+            top: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            box-shadow: 0 0 10px rgba(255, 235, 59, 0.8);
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .plinko-ball.dropping {
+            opacity: 1;
+        }
+
+        .multipliers-bottom {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 2px;
+            text-align: center;
         }
 
         .multiplier {
-            background: rgba(255,255,255,0.15);
-            padding: 8px 12px;
-            border-radius: 8px;
+            padding: 8px 4px;
+            border-radius: 6px;
             font-weight: bold;
+            font-size: 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .multiplier.lose {
+            background: rgba(244, 67, 54, 0.3);
+            border-color: #f44336;
+            color: #ffcdd2;
+        }
+
+        .multiplier.small-win {
+            background: rgba(255, 193, 7, 0.3);
+            border-color: #ffc107;
+            color: #fff8e1;
+        }
+
+        .multiplier.medium-win {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4caf50;
+            color: #e8f5e8;
+        }
+
+        .multiplier.big-win {
+            background: rgba(156, 39, 176, 0.3);
+            border-color: #9c27b0;
+            color: #f3e5f5;
+        }
+
+        .responsible-gaming {
+            background: rgba(255, 152, 0, 0.2);
+            border: 1px solid #ff9800;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .responsible-gaming p {
+            margin: 5px 0;
         }
 
         .result {
@@ -677,22 +774,36 @@ def webapp():
         <div id="plinko" class="tab-content">
             <div class="plinko-board">
                 <h3>🎲 Плинко</h3>
-                <div class="multipliers">
-                    <span class="multiplier">🔥 x0</span>
-                    <span class="multiplier">💰 x1.2</span>
-                    <span class="multiplier">🎉 x1.5</span>
-                    <span class="multiplier">💎 x2.0</span>
-                    <span class="multiplier">👑 x5.0</span>
+                <div class="bet-input-section">
+                    <label for="betAmount">Ставка:</label>
+                    <input type="number" id="betAmount" min="1" value="10" class="bet-input">
+                    <button class="bet-btn-custom" onclick="playCustomPlinko()">🎲 Играть</button>
                 </div>
                 
-                <div class="plinko-animation" id="plinkoAnimation">
-                    <div class="plinko-ball" id="plinkoBall"></div>
-                </div>
+                <div class="plinko-visual">
+                    <div class="plinko-pegs">
+                        <div class="peg-row">●●●●●●●●●</div>
+                        <div class="peg-row">●●●●●●●●</div>
+                        <div class="peg-row">●●●●●●●●●</div>
+                        <div class="peg-row">●●●●●●●●</div>
+                        <div class="peg-row">●●●●●●●●●</div>
+                    </div>
+                    
+                    <div class="plinko-animation" id="plinkoAnimation">
+                        <div class="plinko-ball" id="plinkoBall"></div>
+                    </div>
 
-                <div class="bet-buttons">
-                    <button class="bet-btn" onclick="playPlinko(10)">10 монет</button>
-                    <button class="bet-btn" onclick="playPlinko(25)">25 монет</button>
-                    <button class="bet-btn" onclick="playPlinko(50)">50 монет</button>
+                    <div class="multipliers-bottom">
+                        <div class="multiplier lose">x0</div>
+                        <div class="multiplier small-win">x0.5</div>
+                        <div class="multiplier small-win">x1.0</div>
+                        <div class="multiplier medium-win">x1.5</div>
+                        <div class="multiplier big-win">x2.0</div>
+                        <div class="multiplier medium-win">x1.5</div>
+                        <div class="multiplier small-win">x1.0</div>
+                        <div class="multiplier small-win">x0.5</div>
+                        <div class="multiplier lose">x0</div>
+                    </div>
                 </div>
 
                 <div class="result" id="plinkoResult"></div>
@@ -803,79 +914,104 @@ def webapp():
             showNotification(`${giftNames[giftId]} куплен и отправлен!`);
         }
 
-        function playPlinko(bet) {
+        function playCustomPlinko() {
+            const betInput = document.getElementById('betAmount');
+            const bet = parseInt(betInput.value);
+            
+            // Минимальные проверки
+            if (isNaN(bet) || bet < 1) {
+                showNotification('Ставка должна быть не менее 1 монеты!');
+                return;
+            }
+            
             if (userData.balance < bet) {
                 showNotification('Недостаточно средств для ставки!');
                 return;
             }
 
-            document.querySelectorAll('.bet-btn').forEach(btn => btn.disabled = true);
+            // Быстрая блокировка интерфейса
+            const playButton = document.querySelector('.bet-btn-custom');
+            playButton.disabled = true;
             
+            // Списываем ставку
             userData.balance -= bet;
             userData.plinkoPlayed += 1;
             
+            // Быстрая анимация шарика
             const ball = document.getElementById('plinkoBall');
             ball.classList.add('dropping');
             
+            // Ускоренная анимация падения
+            let position = 4; // Начинаем в центре
+            const drops = 4; // Меньше отскоков для скорости
+            
+            for (let i = 0; i < drops; i++) {
+                setTimeout(() => {
+                    const deviation = Math.random() < 0.5 ? -1 : 1;
+                    position = Math.max(0, Math.min(8, position + deviation));
+                    
+                    const ballElement = document.getElementById('plinkoBall');
+                    ballElement.style.left = `${(position * 11.11) + 5.55}%`;
+                }, i * 150); // Ускоренная анимация
+            }
+            
             setTimeout(() => {
-                const results = [
-                    {emoji: '🔥', multiplier: 0, chance: 20},
-                    {emoji: '💰', multiplier: 1.2, chance: 30},
-                    {emoji: '🎉', multiplier: 1.5, chance: 25},
-                    {emoji: '💎', multiplier: 2.0, chance: 15},
-                    {emoji: '👑', multiplier: 5.0, chance: 10}
-                ];
-                
-                const random = Math.random() * 100;
-                let cumulative = 0;
-                let result = results[0];
-                
-                for (let r of results) {
-                    cumulative += r.chance;
-                    if (random <= cumulative) {
-                        result = r;
-                        break;
-                    }
-                }
-                
-                const winAmount = Math.floor(bet * result.multiplier);
+                // Определяем результат
+                const multipliers = [0, 0.5, 1.0, 1.5, 2.0, 1.5, 1.0, 0.5, 0];
+                const finalMultiplier = multipliers[position];
+                const winAmount = Math.floor(bet * finalMultiplier);
                 
                 if (winAmount > 0) {
                     userData.balance += winAmount;
                     userData.plinkoWon += winAmount;
                 }
                 
+                // Показываем результат
                 const resultDiv = document.getElementById('plinkoResult');
                 if (winAmount > 0) {
                     resultDiv.innerHTML = `
                         <div class="win">
-                            ${result.emoji} ВЫИГРЫШ!<br>
-                            Множитель: x${result.multiplier}<br>
-                            Выигрыш: ${winAmount} монет
+                            🎉 ВЫИГРЫШ! x${finalMultiplier}<br>
+                            +${winAmount} монет
                         </div>
                     `;
                 } else {
                     resultDiv.innerHTML = `
                         <div class="lose">
-                            ${result.emoji} Не повезло!<br>
-                            Проигрыш: ${bet} монет
+                            😔 Проигрыш x${finalMultiplier}<br>
+                            -${bet} монет
                         </div>
                     `;
                 }
                 
                 resultDiv.classList.add('show');
                 
+                // Быстрая подсветка слота
+                document.querySelectorAll('.multiplier').forEach((mult, idx) => {
+                    if (idx === position) {
+                        mult.style.backgroundColor = winAmount > 0 ? 'rgba(76, 175, 80, 0.7)' : 'rgba(244, 67, 54, 0.7)';
+                        mult.style.transform = 'scale(1.1)';
+                    }
+                });
+                
                 saveUserData();
                 updateDisplay();
                 
-                document.querySelectorAll('.bet-btn').forEach(btn => btn.disabled = false);
+                // Быстрая разблокировка
+                playButton.disabled = false;
                 ball.classList.remove('dropping');
+                ball.style.left = '50%';
                 
+                // Быстрое убирание эффектов
                 setTimeout(() => {
+                    document.querySelectorAll('.multiplier').forEach(mult => {
+                        mult.style.backgroundColor = '';
+                        mult.style.transform = '';
+                    });
                     resultDiv.classList.remove('show');
-                }, 5000);
+                }, 2000); // Сокращенное время показа
                 
-            }, 2000);
+            }, drops * 150 + 200); // Общее ускорение
         }
 
         function addBalance() {
