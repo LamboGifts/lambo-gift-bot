@@ -211,6 +211,52 @@ def handle_main_menu(chat_id, message_id, user_name):
 def index():
     return "🎁 GiftBot is running! ✅"
 
+@app.route("/test")
+def test():
+    return "Test page works!"
+
+@app.route("/webhook_info")  
+def webhook_info():
+    """Проверка webhook"""
+    try:
+        url = f"{TELEGRAM_API}/getWebhookInfo"
+        response = requests.get(url)
+        info = response.json()
+        return f"<pre>{json.dumps(info, indent=2, ensure_ascii=False)}</pre>"
+    except Exception as e:
+        return f"Error: {e}"
+
+@app.route("/set_webhook_manual")
+def set_webhook_manual():
+    """Принудительная установка webhook"""
+    try:
+        # Удаляем старый
+        requests.post(f"{TELEGRAM_API}/deleteWebhook")
+        
+        # Устанавливаем новый
+        webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
+        data = {"url": webhook_url}
+        response = requests.post(f"{TELEGRAM_API}/setWebhook", data=data)
+        
+        return f"Webhook set to: {webhook_url}<br>Result: {response.json()}"
+    except Exception as e:
+        return f"Error: {e}"
+
+@app.route("/debug")
+def debug():
+    """Страница отладки"""
+    return f"""
+    <h2>Debug Info</h2>
+    <p>TOKEN: {TOKEN[:10]}...</p>
+    <p>WEBHOOK_URL: {WEBHOOK_URL}</p>
+    <p>Users count: {len(users)}</p>
+    <p>Users: {list(users.keys())}</p>
+    <hr>
+    <a href="/webhook_info">Check Webhook</a><br>
+    <a href="/set_webhook_manual">Set Webhook</a><br>
+    <a href="/test">Test Page</a>
+    """
+
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     """Обработка webhook от Telegram"""
@@ -225,8 +271,13 @@ def webhook():
             user_name = message["from"].get("first_name", "Пользователь")
             text = message.get("text", "")
             
+            logger.info(f"Сообщение от {user_name} ({chat_id}): {text}")
+            
             if text == "/start":
                 handle_start(chat_id, user_name)
+            else:
+                # Отвечаем на любое другое сообщение
+                send_message(chat_id, f"Получил сообщение: {text}\nИспользуйте /start")
         
         elif "callback_query" in data:
             # Нажатие кнопки
@@ -235,6 +286,8 @@ def webhook():
             message_id = callback["message"]["message_id"]
             callback_data = callback["data"]
             user_name = callback["from"].get("first_name", "Пользователь")
+            
+            logger.info(f"Callback от {user_name}: {callback_data}")
             
             # Отвечаем на callback
             answer_url = f"{TELEGRAM_API}/answerCallbackQuery"
