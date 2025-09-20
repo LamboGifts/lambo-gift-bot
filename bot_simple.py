@@ -262,22 +262,26 @@ def webhook():
     """Обработка webhook от Telegram"""
     try:
         data = request.get_json()
-        logger.info(f"Получено обновление: {data}")
+        print(f"WEBHOOK ВЫЗВАН! Данные: {data}")
+        logger.info(f"WEBHOOK ТЕСТ: получены данные")
         
+        # Простой тест - отвечаем на любое сообщение
         if "message" in data:
-            # Новое сообщение
             message = data["message"]
             chat_id = message["chat"]["id"]
             user_name = message["from"].get("first_name", "Пользователь")
             text = message.get("text", "")
             
+            print(f"Сообщение от {user_name} ({chat_id}): {text}")
             logger.info(f"Сообщение от {user_name} ({chat_id}): {text}")
+            
+            # Сначала простой ответ на любое сообщение
+            send_message(chat_id, f"ТЕСТ: Бот получил ваше сообщение: '{text}'")
             
             if text == "/start":
                 handle_start(chat_id, user_name)
-            else:
-                # Отвечаем на любое другое сообщение
-                send_message(chat_id, f"Получил сообщение: {text}\nИспользуйте /start")
+            
+            return "OK"
         
         elif "callback_query" in data:
             # Нажатие кнопки
@@ -309,6 +313,7 @@ def webhook():
         return "OK"
     
     except Exception as e:
+        print(f"ОШИБКА В WEBHOOK: {e}")
         logger.error(f"Ошибка обработки webhook: {e}")
         return "ERROR", 500
 
