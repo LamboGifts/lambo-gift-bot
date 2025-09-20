@@ -7,7 +7,7 @@ from flask import Flask, request
 # Настройки
 TOKEN = "7678954168:AAG6755ngOoYcQfIt6viZKMRXRcv6dOd0vY"
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
-WEBHOOK_URL = "https://lambo-gift.onrender.com"
+WEBHOOK_URL = "https://lambo-gift.onrender.com"  # <- убедись, что это твой хост
 
 app = Flask(__name__)
 
@@ -38,7 +38,7 @@ def get_user_data(user_id):
     return users[user_id]
 
 def update_user_balance(user_id, amount):
-    """Обновление баланса"""
+    """Обновление баланса (плюс/минус)"""
     if user_id not in users:
         get_user_data(user_id)
     users[user_id]["balance"] += amount
@@ -76,10 +76,10 @@ def answer_callback(callback_query_id):
     requests.post(url, data={"callback_query_id": callback_query_id})
 
 def main_menu_keyboard():
-    """Главное меню"""
+    """Главное меню — используем WEBHOOK_URL чтобы WebApp указывал на правильный хост"""
     return {
         "inline_keyboard": [
-            [{"text": "🎮 Открыть WebApp", "web_app": {"url": "https://lambo-gift-bot.onrender.com/webapp"}}],
+            [{"text": "🎮 Открыть WebApp", "web_app": {"url": f"{WEBHOOK_URL}/webapp"}}],
             [{"text": "🎁 Каталог подарков", "callback_data": "catalog"}],
             [{"text": "🎲 Плинко", "callback_data": "plinko"}],
             [{"text": "💳 Баланс", "callback_data": "balance"}],
@@ -160,7 +160,7 @@ def handle_buy_gift(chat_id, message_id, gift_id):
     edit_message(chat_id, message_id, text, keyboard)
 
 def play_plinko():
-    """Логика игры Плинко"""
+    """Логика игры Плинко (при использовании кнопок, старый режим)"""
     # Эмулируем падение шарика
     paths = [
         {"emoji": "🔥", "multiplier": 0, "chance": 20},      # Проиграл
@@ -183,7 +183,7 @@ def play_plinko():
     return paths[0]  # fallback
 
 def handle_plinko(chat_id, message_id):
-    """Меню Плинко"""
+    """Меню Плинко (старый режим с кнопками)"""
     user_data = get_user_data(chat_id)
     
     keyboard = {
@@ -211,7 +211,7 @@ def handle_plinko(chat_id, message_id):
     edit_message(chat_id, message_id, text, keyboard)
 
 def handle_play_plinko(chat_id, message_id, bet):
-    """Играть в Плинко"""
+    """Играть в Плинко (старый режим)"""
     user_data = get_user_data(chat_id)
     
     if user_data['balance'] < bet:
@@ -238,7 +238,7 @@ def handle_play_plinko(chat_id, message_id, bet):
         user_data['balance'] += win_amount
         user_data['plinko_won'] += win_amount
     
-    # Анимация падения шарика
+    # Анимация падения шарика (текстовая)
     animation = """
 🎲 Шарик падает...
 
@@ -335,858 +335,219 @@ def home():
 
 @app.route("/webapp")
 def webapp():
-    """WebApp интерфейс"""
+    """WebApp интерфейс — Plinko (встроенный HTML)"""
+    # Обратите внимание: поставлен min=10 для ставки
     webapp_html = """<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GiftBot WebApp</title>
+    <title>GiftBot WebApp - Plinko</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #fff;
-            overflow-x: hidden;
-            min-height: 100vh;
-        }
-
-        .container {
-            max-width: 400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            background: rgba(255,255,255,0.1);
-            padding: 20px;
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
-        }
-
-        .balance {
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-
-        .tabs {
-            display: flex;
-            background: rgba(255,255,255,0.1);
-            border-radius: 15px;
-            padding: 5px;
-            margin-bottom: 30px;
-        }
-
-        .tab {
-            flex: 1;
-            padding: 15px;
-            text-align: center;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: bold;
-        }
-
-        .tab.active {
-            background: rgba(255,255,255,0.3);
-            transform: scale(1.05);
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .gift-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-
-        .gift-card {
-            background: rgba(255,255,255,0.15);
-            border-radius: 15px;
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 2px solid transparent;
-        }
-
-        .gift-card:hover {
-            transform: translateY(-5px);
-            background: rgba(255,255,255,0.25);
-            border-color: rgba(255,255,255,0.3);
-        }
-
-        .gift-emoji {
-            font-size: 40px;
-            margin-bottom: 10px;
-            display: block;
-        }
-
-        .gift-name {
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        .gift-price {
-            color: #ffeb3b;
-            font-weight: bold;
-        }
-
-        .plinko-board {
-            background: rgba(255,255,255,0.1);
-            border-radius: 20px;
-            padding: 30px 20px;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .plinko-animation {
-            height: 200px;
-            position: relative;
-            margin: 20px 0;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 15px;
-            background: linear-gradient(45deg, rgba(255,255,255,0.05), rgba(255,255,255,0.1));
-            overflow: hidden;
-        }
-
-        .plinko-ball {
-            width: 20px;
-            height: 20px;
-            background: #ffeb3b;
-            border-radius: 50%;
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            box-shadow: 0 0 15px rgba(255, 235, 59, 0.7);
-            opacity: 0;
-            transition: all 0.5s ease;
-        }
-
-        .plinko-ball.dropping {
-            opacity: 1;
-            animation: drop 2s ease-in-out;
-        }
-
-        @keyframes drop {
-            0% { top: 10px; transform: translateX(-50%); }
-            25% { top: 60px; transform: translateX(-30px); }
-            50% { top: 110px; transform: translateX(-70px); }
-            75% { top: 150px; transform: translateX(-20px); }
-            100% { top: 180px; transform: translateX(-40px); }
-        }
-
-        .bet-input-section {
-            background: rgba(255,255,255,0.1);
-            padding: 20px;
-            border-radius: 15px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .bet-input {
-            width: 100px;
-            padding: 8px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 8px;
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-            font-size: 14px;
-            margin: 5px;
-            text-align: center;
-        }
-
-        .total-bet {
-            margin-top: 10px;
-            font-weight: bold;
-            color: #ffeb3b;
-            font-size: 16px;
-        }
-
-        .bet-btn-custom {
-            background: linear-gradient(45deg, #4caf50, #45a049);
-            border: none;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            transition: all 0.3s ease;
-        }
-
-        .bet-btn-custom:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        }
-
-        .bet-btn-custom:disabled {
-            background: rgba(255,255,255,0.3);
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .plinko-visual {
-            position: relative;
-            background: linear-gradient(135deg, #1e3a8a, #3730a3);
-            border-radius: 15px;
-            padding: 30px 20px;
-            margin: 20px 0;
-            min-height: 400px;
-        }
-
-        .plinko-pyramid {
-            position: relative;
-            width: 100%;
-            height: 300px;
-            margin-bottom: 20px;
-        }
-
-        .peg-row {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: 25px;
-            gap: 30px;
-        }
-
-        .peg {
-            width: 8px;
-            height: 8px;
-            background: #ffffff;
-            border-radius: 50%;
-            box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
-            position: relative;
-        }
-
-        .row-1 { margin-top: 10px; }
-        .row-2 .peg { margin: 0 -5px; }
-        .row-3 .peg { margin: 0 -8px; }
-        .row-4 .peg { margin: 0 -10px; }
-        .row-5 .peg { margin: 0 -12px; }
-        .row-6 .peg { margin: 0 -14px; }
-        .row-7 .peg { margin: 0 -16px; }
-
-        .plinko-animation {
-            height: 300px;
-            position: absolute;
-            top: 30px;
-            left: 20px;
-            right: 20px;
-            pointer-events: none;
-        }
-
-        .plinko-ball {
-            width: 18px;
-            height: 18px;
-            background: radial-gradient(circle at 30% 30%, #60a5fa, #3b82f6);
-            border-radius: 50%;
-            position: absolute;
-            top: 5px;
-            left: 50%;
-            transform: translateX(-50%);
-            box-shadow: 0 0 15px rgba(59, 130, 246, 0.8);
-            opacity: 0;
-            transition: all 0.3s ease;
-            z-index: 10;
-        }
-
-        .plinko-ball.dropping {
-            opacity: 1;
-        }
-
-        .multipliers-bottom {
-            display: grid;
-            grid-template-columns: repeat(11, 1fr);
-            gap: 2px;
-            margin-top: 20px;
-        }
-
-        .multiplier {
-            padding: 10px 4px;
-            border-radius: 8px;
-            font-weight: bold;
-            font-size: 11px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.2);
-            position: relative;
-        }
-
-        .multiplier.lose {
-            background: linear-gradient(135deg, #dc2626, #b91c1c);
-            color: #fef2f2;
-        }
-
-        .multiplier.small-win {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
-            color: #fef3c7;
-        }
-
-        .multiplier.medium-win {
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: #ecfdf5;
-        }
-
-        .multiplier.big-win {
-            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-            color: #f3e8ff;
-            box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
-        }
-
-        .responsible-gaming {
-            background: rgba(255, 152, 0, 0.2);
-            border: 1px solid #ff9800;
-            border-radius: 10px;
-            padding: 15px;
-            margin: 15px 0;
-            text-align: center;
-            font-size: 14px;
-        }
-
-        .responsible-gaming p {
-            margin: 5px 0;
-        }
-
-        .result {
-            margin-top: 20px;
-            padding: 20px;
-            background: rgba(255,255,255,0.15);
-            border-radius: 15px;
-            text-align: center;
-            display: none;
-        }
-
-        .result.show {
-            display: block;
-            animation: slideUp 0.5s ease;
-        }
-
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .win {
-            color: #4caf50;
-            font-size: 18px;
-            font-weight: bold;
-        }
-
-        .lose {
-            color: #f44336;
-            font-size: 18px;
-            font-weight: bold;
-        }
-
-        .btn {
-            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
-            border: none;
-            color: #fff;
-            padding: 15px 30px;
-            border-radius: 25px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            transition: all 0.3s ease;
-            width: 100%;
-            margin-top: 10px;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        }
-
-        .stats {
-            background: rgba(255,255,255,0.1);
-            padding: 20px;
-            border-radius: 15px;
-            margin-bottom: 20px;
-        }
-
-        .stat-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-
-        .notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #4caf50;
-            color: white;
-            padding: 15px 20px;
-            border-radius: 10px;
-            transform: translateX(100%);
-            transition: transform 0.3s ease;
-            z-index: 1000;
-        }
-
-        .notification.show {
-            transform: translateX(0);
-        }
+        /* Стили для Plinko — адаптированы под мобильный WebApp */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; min-height:100vh; }
+        .container { max-width:420px; margin: 10px auto; padding: 16px; }
+        .header { text-align:center; margin-bottom:18px; background:rgba(255,255,255,0.06); padding:12px; border-radius:12px; }
+        .balance { font-size:20px; font-weight:700; margin-bottom:6px; }
+        .plinko-visual { background: linear-gradient(135deg,#1e3a8a,#3730a3); border-radius:12px; padding:16px; min-height:380px; margin-bottom:12px; }
+        .plinko-pyramid { width:100%; height:240px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; }
+        .peg-row { display:flex; gap:14px; justify-content:center; }
+        .peg { width:8px; height:8px; background:#fff; border-radius:50%; box-shadow:0 0 6px rgba(255,255,255,0.6); }
+        .plinko-animation { position:relative; height:220px; margin-top:8px; overflow:hidden; }
+        .plinko-ball { width:18px; height:18px; border-radius:50%; position:absolute; top:6px; left:50%; transform:translateX(-50%); box-shadow:0 0 12px rgba(59,130,246,0.8); transition: all 0.18s ease; z-index:20; background: radial-gradient(circle at 30% 30%, #60a5fa, #3b82f6); }
+        .multipliers-bottom { display:grid; grid-template-columns: repeat(11, 1fr); gap:6px; margin-top:8px; }
+        .multiplier { padding:8px 6px; border-radius:8px; font-weight:700; font-size:12px; text-align:center; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.03); }
+        .btn { margin-top:12px; width:100%; padding:12px; border-radius:10px; border:none; font-weight:700; cursor:pointer; background:linear-gradient(45deg,#ff6b6b,#ee5a24); color:#fff; }
+        .bet-input-section { display:flex; gap:8px; align-items:center; justify-content:center; margin-bottom:8px; }
+        .bet-input { width:110px; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.03); color:#fff; text-align:center; }
+        .total-bet { text-align:center; margin-top:8px; color:#ffeb3b; font-weight:700; }
+        .result { margin-top:12px; padding:12px; border-radius:10px; background:rgba(255,255,255,0.06); display:none; text-align:center; }
+        .result.show { display:block; animation:fadeIn 0.36s ease; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none; } }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <div class="balance">💰 <span id="balance">100</span> монет</div>
-            <div>GiftBot WebApp</div>
+            <div>GiftBot — Plinko</div>
         </div>
 
-        <div class="tabs">
-            <div class="tab active" onclick="showTab('gifts')">🎁 Подарки</div>
-            <div class="tab" onclick="showTab('plinko')">🎲 Плинко</div>
-            <div class="tab" onclick="showTab('stats')">📊 Статистика</div>
+        <div class="bet-input-section">
+            <input id="betAmount" type="number" min="10" value="10" class="bet-input" />
+            <input id="ballCount" type="number" min="1" max="5" value="1" class="bet-input" />
         </div>
+        <div class="total-bet">Общая ставка: <span id="totalBet">10</span> монет</div>
 
-        <div id="gifts" class="tab-content active">
-            <div class="gift-grid">
-                <div class="gift-card" onclick="buyGift('rose', 10)">
-                    <span class="gift-emoji">🌹</span>
-                    <div class="gift-name">Роза</div>
-                    <div class="gift-price">10 монет</div>
-                </div>
-                <div class="gift-card" onclick="buyGift('cake', 25)">
-                    <span class="gift-emoji">🎂</span>
-                    <div class="gift-name">Торт</div>
-                    <div class="gift-price">25 монет</div>
-                </div>
-                <div class="gift-card" onclick="buyGift('diamond', 50)">
-                    <span class="gift-emoji">💎</span>
-                    <div class="gift-name">Бриллиант</div>
-                    <div class="gift-price">50 монет</div>
-                </div>
-                <div class="gift-card" onclick="buyGift('crown', 100)">
-                    <span class="gift-emoji">👑</span>
-                    <div class="gift-name">Корона</div>
-                    <div class="gift-price">100 монет</div>
-                </div>
-                <div class="gift-card" onclick="buyGift('rocket', 75)">
-                    <span class="gift-emoji">🚀</span>
-                    <div class="gift-name">Ракета</div>
-                    <div class="gift-price">75 монет</div>
-                </div>
-                <div class="gift-card" onclick="buyGift('star', 30)">
-                    <span class="gift-emoji">⭐</span>
-                    <div class="gift-name">Звезда</div>
-                    <div class="gift-price">30 монет</div>
-                </div>
+        <div class="plinko-visual">
+            <div class="plinko-pyramid" aria-hidden="true">
+                <div class="peg-row"><div class="peg"></div><div class="peg"></div><div class="peg"></div></div>
+                <div class="peg-row"><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div></div>
+                <div class="peg-row"><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div></div>
+                <div class="peg-row"><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div></div>
+                <div class="peg-row"><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div></div>
+                <div class="peg-row"><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div></div>
+                <div class="peg-row"><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div><div class="peg"></div></div>
+            </div>
+
+            <div class="plinko-animation" id="plinkoAnimation"><!-- шарики будут сюда --></div>
+
+            <div class="multipliers-bottom" id="multipliersBottom">
+                <!-- 11 слотов -->
+                <div class="multiplier">7x</div>
+                <div class="multiplier">2x</div>
+                <div class="multiplier">1x</div>
+                <div class="multiplier">0.8x</div>
+                <div class="multiplier">0.7x</div>
+                <div class="multiplier">0.7x</div>
+                <div class="multiplier">0.8x</div>
+                <div class="multiplier">1x</div>
+                <div class="multiplier">2x</div>
+                <div class="multiplier">7x</div>
+                <div class="multiplier">1x</div>
             </div>
         </div>
 
-        <div id="plinko" class="tab-content">
-            <div class="plinko-board">
-                <h3>🎲 Плинко</h3>
-                <div class="bet-input-section">
-                    <label for="betAmount">Ставка за шарик:</label>
-                    <input type="number" id="betAmount" min="1" value="10" class="bet-input">
-                    
-                    <label for="ballCount">Количество шариков (1-5):</label>
-                    <input type="number" id="ballCount" min="1" max="5" value="1" class="bet-input">
-                    
-                    <button class="bet-btn-custom" onclick="playMultiplePlinko()">🎲 Играть</button>
-                    <div class="total-bet">Общая ставка: <span id="totalBet">10</span> монет</div>
-                </div>
-                
-                <div class="plinko-visual">
-                    <div class="plinko-pyramid">
-                        <!-- Пирамида пегов как на фото -->
-                        <div class="peg-row row-1">
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                        </div>
-                        <div class="peg-row row-2">
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                        </div>
-                        <div class="peg-row row-3">
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                        </div>
-                        <div class="peg-row row-4">
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                        </div>
-                        <div class="peg-row row-5">
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                        </div>
-                        <div class="peg-row row-6">
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                        </div>
-                        <div class="peg-row row-7">
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                            <div class="peg"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="plinko-animation" id="plinkoAnimation">
-                        <div class="plinko-ball" id="plinkoBall"></div>
-                    </div>
+        <button class="btn" id="playBtn">🎲 Bet</button>
 
-                    <div class="multipliers-bottom">
-                        <div class="multiplier lose">0.2x</div>
-                        <div class="multiplier small-win">0.5x</div>
-                        <div class="multiplier small-win">1x</div>
-                        <div class="multiplier medium-win">1.5x</div>
-                        <div class="multiplier big-win">2x</div>
-                        <div class="multiplier big-win">3x</div>
-                        <div class="multiplier big-win">2x</div>
-                        <div class="multiplier medium-win">1.5x</div>
-                        <div class="multiplier small-win">1x</div>
-                        <div class="multiplier small-win">0.5x</div>
-                        <div class="multiplier lose">0.2x</div>
-                    </div>
-                </div>
-
-                <div class="result" id="plinkoResult"></div>
-            </div>
-        </div>
-
-        <div id="stats" class="tab-content">
-            <div class="stats">
-                <h3>📊 Ваша статистика</h3>
-                <div class="stat-row">
-                    <span>🎁 Подарков отправлено:</span>
-                    <span id="giftsSent">0</span>
-                </div>
-                <div class="stat-row">
-                    <span>💸 Потрачено на подарки:</span>
-                    <span id="totalSpent">0</span>
-                </div>
-                <div class="stat-row">
-                    <span>🎲 Игр в Плинко:</span>
-                    <span id="plinkoPlayed">0</span>
-                </div>
-                <div class="stat-row">
-                    <span>🏆 Выиграно в Плинко:</span>
-                    <span id="plinkoWon">0</span>
-                </div>
-            </div>
-            <button class="btn" onclick="addBalance()">💰 Получить бонус (100 монет)</button>
-        </div>
+        <div id="result" class="result"></div>
     </div>
 
-    <div class="notification" id="notification"></div>
-
     <script>
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
+        // Telegram WebApp ready
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+        }
 
-        const user = window.Telegram.WebApp.initDataUnsafe?.user;
-        const userId = user?.id || 'demo_user';
+        const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || 'demo_user';
 
-        let userData = {
-            balance: 100,
-            giftsSent: 0,
-            totalSpent: 0,
-            plinkoPlayed: 0,
-            plinkoWon: 0
-        };
+        let userData = { balance: 100, plinkoPlayed: 0, plinkoWon: 0 };
 
-        function loadUserData() {
-            const saved = localStorage.getItem(`giftbot_${userId}`);
-            if (saved) {
-                userData = JSON.parse(saved);
-                updateDisplay();
+        function loadLocal() {
+            const saved = localStorage.getItem('giftbot_' + userId);
+            if (saved) userData = JSON.parse(saved);
+            updateUI();
+        }
+        function saveLocal() { localStorage.setItem('giftbot_' + userId, JSON.stringify(userData)); }
+        function updateUI() { document.getElementById('balance').textContent = userData.balance; }
+
+        loadLocal();
+
+        document.getElementById('betAmount').addEventListener('input', updateTotal);
+        document.getElementById('ballCount').addEventListener('input', updateTotal);
+        function updateTotal() {
+            const bet = parseInt(document.getElementById('betAmount').value) || 0;
+            const balls = parseInt(document.getElementById('ballCount').value) || 0;
+            document.getElementById('totalBet').textContent = bet * balls;
+        }
+        updateTotal();
+
+        // multipliers array must match bottom slots order
+        const multipliers = [7,2,1,0.8,0.7,0.7,0.8,1,2,7,1];
+
+        document.getElementById('playBtn').addEventListener('click', () => {
+            const bet = parseInt(document.getElementById('betAmount').value);
+            const balls = parseInt(document.getElementById('ballCount').value) || 1;
+
+            if (isNaN(bet) || bet < 10) {
+                showResult('Минимальная ставка 10 монет', false);
+                return;
             }
-        }
-
-        function saveUserData() {
-            localStorage.setItem(`giftbot_${userId}`, JSON.stringify(userData));
-        }
-
-        function updateDisplay() {
-            document.getElementById('balance').textContent = userData.balance;
-            document.getElementById('giftsSent').textContent = userData.giftsSent;
-            document.getElementById('totalSpent').textContent = userData.totalSpent;
-            document.getElementById('plinkoPlayed').textContent = userData.plinkoPlayed;
-            document.getElementById('plinkoWon').textContent = userData.plinkoWon;
-        }
-
-        function showNotification(message) {
-            const notification = document.getElementById('notification');
-            notification.textContent = message;
-            notification.classList.add('show');
-            
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 3000);
-        }
-
-        function showTab(tabName) {
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(tabName).classList.add('active');
-        }
-
-        function buyGift(giftId, price) {
-            if (userData.balance < price) {
-                showNotification('Недостаточно средств!');
+            if (isNaN(balls) || balls < 1) {
+                showResult('Некорректное количество шариков', false);
+                return;
+            }
+            const total = bet * balls;
+            if (userData.balance < total) {
+                showResult('Недостаточно средств для этой ставки', false);
                 return;
             }
 
-            userData.balance -= price;
-            userData.giftsSent += 1;
-            userData.totalSpent += price;
-            
-            saveUserData();
-            updateDisplay();
-            
-            const giftNames = {
-                'rose': '🌹 Роза',
-                'cake': '🎂 Торт', 
-                'diamond': '💎 Бриллиант',
-                'crown': '👑 Корона',
-                'rocket': '🚀 Ракета',
-                'star': '⭐ Звезда'
-            };
-            
-            showNotification(`${giftNames[giftId]} куплен и отправлен!`);
-        }
+            // списываем локально (сервер проверит тоже)
+            userData.balance -= total;
+            userData.plinkoPlayed += balls;
+            saveLocal();
+            updateUI();
 
-        function playMultiplePlinko() {
-            const betInput = document.getElementById('betAmount');
-            const ballCountInput = document.getElementById('ballCount');
-            const bet = parseInt(betInput.value);
-            const ballCount = parseInt(ballCountInput.value);
-            
-            // Проверки
-            if (isNaN(bet) || bet < 1) {
-                showNotification('Ставка должна быть не менее 1 монеты!');
-                return;
-            }
-            
-            if (isNaN(ballCount) || ballCount < 1 || ballCount > 5) {
-                showNotification('Количество шариков должно быть от 1 до 5!');
-                return;
-            }
-            
-            const totalBet = bet * ballCount;
-            
-            if (userData.balance < totalBet) {
-                showNotification('Недостаточно средств для ставки!');
-                return;
-            }
-
-            // Блокируем интерфейс
-            const playButton = document.querySelector('.bet-btn-custom');
-            playButton.disabled = true;
-            
-            // Списываем ставку
-            userData.balance -= totalBet;
-            userData.plinkoPlayed += ballCount;
-            
+            // проводим симуляцию каждого шарика
+            let completed = 0;
             let totalWin = 0;
-            let completedBalls = 0;
             const results = [];
-            
-            // Запускаем шарики с небольшими интервалами
-            for (let ballIndex = 0; ballIndex < ballCount; ballIndex++) {
+
+            for (let i=0;i<balls;i++) {
                 setTimeout(() => {
-                    playSingleBall(bet, ballIndex, (result) => {
-                        totalWin += result.winAmount;
-                        results.push(result);
-                        completedBalls++;
-                        
-                        if (completedBalls === ballCount) {
-                            // Все шарики упали, показываем итоги
+                    playOne(bet, (res) => {
+                        totalWin += res.winAmount;
+                        results.push(res);
+                        completed++;
+                        // отправляем каждую итерацию? нет — ждём всех шариков
+                        if (completed === balls) {
+                            // начисляем выигрыш локально
                             userData.balance += totalWin;
                             userData.plinkoWon += totalWin;
-                            
-                            showFinalResults(results, totalBet, totalWin);
-                            
-                            saveUserData();
-                            updateDisplay();
-                            
-                            // Разблокируем интерфейс
-                            playButton.disabled = false;
+                            saveLocal();
+                            updateUI();
+
+                            // посылаем данные в бота
+                            const payload = { bet: bet, balls: balls, totalBet: total, totalWin: totalWin, results: results };
+                            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.sendData) {
+                                window.Telegram.WebApp.sendData(JSON.stringify(payload));
+                            }
+
+                            // показываем результат пользователю в WebApp
+                            let html = `<strong>Итог:</strong><br>Ставка: ${total} монет<br>Выигрыш: ${totalWin} монет`;
+                            showResult(html, totalWin > 0);
                         }
                     });
-                }, ballIndex * 200); // Интервал между шариками
+                }, i * 220);
             }
-        }
-        
-        function playSingleBall(bet, ballIndex, callback) {
-            // Создаем уникальный шарик для каждого броска
-            const ballId = `ball_${ballIndex}`;
+        });
+
+        function playOne(bet, cb) {
+            const anim = document.getElementById('plinkoAnimation');
             const ball = document.createElement('div');
             ball.className = 'plinko-ball';
-            ball.id = ballId;
-            ball.style.backgroundColor = getRandomBallColor();
-            
-            const animation = document.getElementById('plinkoAnimation');
-            animation.appendChild(ball);
-            
-            // Анимация падения через пирамиду пегов
-            ball.classList.add('dropping');
-            
-            // Начальная позиция в центре (индекс 5 из 11)
-            let position = 5;
-            const drops = 7; // 7 рядов пегов
-            
-            for (let i = 0; i < drops; i++) {
+            anim.appendChild(ball);
+
+            // start in center slot index = 5
+            let pos = 5;
+            const drops = 7;
+            for (let i=0;i<drops;i++) {
                 setTimeout(() => {
-                    // На каждом пеге шарик может отскочить влево или вправо
-                    const deviation = Math.random() < 0.5 ? -1 : 1;
-                    position = Math.max(0, Math.min(10, position + deviation));
-                    
-                    // Обновляем позицию шарика
-                    const leftPercent = (position * 9.09) + 4.5; // Распределяем по 11 слотам
-                    ball.style.left = `${leftPercent}%`;
-                    ball.style.top = `${20 + (i * 35)}px`;
-                    
-                }, i * 200); // Интервал между отскоками
+                    // случайный рикошет
+                    const dev = Math.random() < 0.5 ? -1 : 1;
+                    pos = Math.max(0, Math.min(multipliers.length-1, pos + dev));
+                    // позиционируем визуально (проценты)
+                    const leftPerc = (pos/(multipliers.length-1))*88 + 6; // отступы
+                    ball.style.left = leftPerc + '%';
+                    ball.style.top = (20 + i*28) + 'px';
+                }, i * 180);
             }
-            
+
             setTimeout(() => {
-                // Определяем результат на основе финальной позиции (11 слотов)
-                const multipliers = [0.2, 0.5, 1.0, 1.5, 2.0, 3.0, 2.0, 1.5, 1.0, 0.5, 0.2];
-                const finalMultiplier = multipliers[position];
-                const winAmount = Math.floor(bet * finalMultiplier);
-                
-                // Подсвечиваем слот куда упал шарик
+                const finalMultiplier = multipliers[pos];
+                const win = Math.floor(bet * finalMultiplier);
+                // подсветка слота
                 const slots = document.querySelectorAll('.multiplier');
-                if (slots[position]) {
-                    slots[position].style.backgroundColor = winAmount >= bet ? 
-                        'rgba(16, 185, 129, 0.8)' : 'rgba(220, 38, 38, 0.8)';
-                    slots[position].style.transform = 'scale(1.1)';
-                    
-                    // Убираем подсветку через 2 секунды
-                    setTimeout(() => {
-                        slots[position].style.backgroundColor = '';
-                        slots[position].style.transform = '';
-                    }, 2000);
+                if (slots[pos]) {
+                    slots[pos].style.transform = 'scale(1.08)';
+                    setTimeout(()=>{ slots[pos].style.transform = ''; }, 900);
                 }
-                
-                // Убираем шарик после анимации
-                setTimeout(() => {
-                    ball.remove();
-                }, 1500);
-                
-                callback({
-                    position: position,
-                    multiplier: finalMultiplier,
-                    winAmount: winAmount,
-                    bet: bet
-                });
-                
-            }, drops * 200 + 300);
+                // remove ball
+                setTimeout(()=>{ ball.remove(); }, 1200);
+                cb({ position: pos, multiplier: finalMultiplier, winAmount: win });
+            }, drops * 180 + 160);
         }
-        
-        function getRandomBallColor() {
-            const colors = [
-                '#ffeb3b', // желтый
-                '#ff5722', // оранжево-красный
-                '#4caf50', // зеленый
-                '#2196f3', // синий
-                '#9c27b0'  // фиолетовый
-            ];
-            return colors[Math.floor(Math.random() * colors.length)];
+
+        function showResult(html, ok=true) {
+            const r = document.getElementById('result');
+            r.innerHTML = html;
+            r.classList.add('show');
+            setTimeout(()=> r.classList.remove('show'), 5000);
         }
-        
-        function showFinalResults(results, totalBet, totalWin) {
-            const resultDiv = document.getElementById('plinkoResult');
-            
-            let resultText = `<div class="${totalWin > 0 ? 'win' : 'lose'}">`;
-            resultText += `<strong>Результаты ${results.length} шариков:</strong><br>`;
-            
-            results.forEach((result, index) => {
-                resultText += `Шарик ${index + 1}: x${result.multiplier} = ${result.winAmount} монет<br>`;
-            });
-            
-            resultText += `<br><strong>Итого:</strong><br>`;
-            resultText += `Ставка: ${totalBet} монет<br>`;
-            resultText += `Выигрыш: ${totalWin} монет<br>`;
-            
-            if (totalWin > totalBet) {
-                resultText += `<span style="color: #4caf50;">Прибыль: +${totalWin - totalBet} монет 🎉</span>`;
-            } else if (totalWin < totalBet) {
-                resultText += `<span style="color: #f44336;">Убыток: -${totalBet - totalWin} монет</span>`;
-            } else {
-                resultText += `Безубыток: 0 монет`;
-            }
-            
-            resultText += `</div>`;
-            
-            resultDiv.innerHTML = resultText;
-            resultDiv.classList.add('show');
-            
-            setTimeout(() => {
-                resultDiv.classList.remove('show');
-            }, 5000);
-        }
-        
-        // Обновляем общую ставку при изменении инпутов
-        document.addEventListener('DOMContentLoaded', function() {
-            loadUserData();
-            
-            function updateTotalBet() {
-                const bet = parseInt(document.getElementById('betAmount').value) || 0;
-                const balls = parseInt(document.getElementById('ballCount').value) || 0;
-                document.getElementById('totalBet').textContent = bet * balls;
-            }
-            
-            document.getElementById('betAmount').addEventListener('input', updateTotalBet);
-            document.getElementById('ballCount').addEventListener('input', updateTotalBet);
-        });
     </script>
 </body>
 </html>"""
@@ -1200,19 +561,61 @@ def webhook():
         data = request.get_json()
         print(f"Webhook получил: {data}")
         
+        # Если пришло сообщение
         if "message" in data:
             message = data["message"]
             chat_id = message["chat"]["id"]
             user_name = message["from"].get("first_name", "User")
             text = message.get("text", "")
-            
+
+            # --- Обработка WebApp sendData (message.web_app_data) ---
+            if "web_app_data" in message:
+                try:
+                    raw = message["web_app_data"].get("data")
+                    payload = json.loads(raw)
+                    # payload ожидает: { bet, balls, totalBet, totalWin, results }
+                    bet = int(payload.get("bet", 0))
+                    total_bet = int(payload.get("totalBet", 0))
+                    total_win = int(payload.get("totalWin", 0))
+                    balls = int(payload.get("balls", 1))
+                except Exception as e:
+                    send_message(chat_id, "Ошибка при получении данных из WebApp.")
+                    return "OK"
+
+                user_data = get_user_data(chat_id)
+
+                # серверная проверка минимальной ставки и баланса
+                if bet < 10:
+                    send_message(chat_id, "❌ Минимальная ставка — 10 монет.")
+                    return "OK"
+                if user_data["balance"] < total_bet:
+                    send_message(chat_id, f"❌ Недостаточно средств на балансе. Нужны {total_bet}, у вас {user_data['balance']}.")
+                    return "OK"
+
+                # применяем транзакцию: списываем total_bet и начисляем total_win
+                user_data["balance"] -= total_bet
+                user_data["plinko_played"] += balls
+                if total_win > 0:
+                    user_data["balance"] += total_win
+                    user_data["plinko_won"] += total_win
+
+                # Ответ пользователю в чате с итогом
+                msg = (f"🎮 <b>Plinko — результат</b>\n\n"
+                       f"💸 Ставка за шарик: {bet} монет\n"
+                       f"🎲 Шариков: {balls}\n"
+                       f"🏆 Выигрыш: {total_win} монет\n\n"
+                       f"💳 Баланс: {user_data['balance']} монет")
+                send_message(chat_id, msg)
+                return "OK"
+
+            # Обычное текстовое сообщение
             print(f"Сообщение от {user_name}: {text}")
-            
             if text == "/start":
                 handle_start(chat_id, user_name)
             else:
                 send_message(chat_id, f"Получил: {text}\nИспользуйте /start для начала")
         
+        # Обработка callback_query (inline кнопки)
         elif "callback_query" in data:
             callback = data["callback_query"]
             chat_id = callback["message"]["chat"]["id"]
@@ -1247,10 +650,13 @@ def webhook():
         return "ERROR", 500
 
 if __name__ == "__main__":
-    # Устанавливаем webhook
+    # Устанавливаем webhook (проверь WEBHOOK_URL)
     webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
-    response = requests.post(f"{API_URL}/setWebhook", data={"url": webhook_url})
-    print(f"Webhook установлен: {response.json()}")
+    try:
+        response = requests.post(f"{API_URL}/setWebhook", data={"url": webhook_url})
+        print(f"Установка webhook: {response.status_code} {response.text}")
+    except Exception as e:
+        print(f"Ошибка при установке webhook: {e}")
     
     # Запускаем Flask
     port = int(os.environ.get("PORT", 10000))
