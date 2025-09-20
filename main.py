@@ -862,6 +862,7 @@ def webapp():
             
             <div class="game-info">
                 <div>💎 Инвентарь: <span id="inventoryCount">0</span> предметов</div>
+                <div>⭐ Общая стоимость: <span id="inventoryValue">0</span> звезд</div>
                 <div>🎁 Открыто кейсов: <span id="casesOpened">0</span></div>
             </div>
         </div>
@@ -899,46 +900,80 @@ def webapp():
         const trail = document.getElementById("trail");
         let rocketSound, crashSound, openSound;
         
-        // Кейсы с подарками
+        // Реальные подарки из Telegram Gifts - обновите цены когда получите точные данные
+        const realTelegramGifts = {
+            // Базовые подарки (1-10 звезд)
+            deliciousCake: {name: "Delicious Cake", emoji: "🎂", stars: 1},
+            greenStar: {name: "Green Star", emoji: "⭐", stars: 2}, 
+            fireworks: {name: "Fireworks", emoji: "🎆", stars: 5},
+            blueStar: {name: "Blue Star", emoji: "💙", stars: 10},
+            
+            // Средние подарки (25-100 звезд)
+            redHeart: {name: "Red Heart", emoji: "❤️", stars: 25},
+            goldenPremium: {name: "Golden Premium", emoji: "👑", stars: 100},
+            
+            // Дорогие подарки (250-1000 звезд)
+            platinumPremium: {name: "Platinum Premium", emoji: "💎", stars: 250},
+            limitedGift: {name: "Limited Gift", emoji: "🔮", stars: 500},
+            exclusiveGift: {name: "Exclusive Gift", emoji: "✨", stars: 1000},
+            
+            // Очень редкие (2500+ звезд)
+            legendaryStar: {name: "Legendary Star", emoji: "🌟", stars: 2500},
+            ultimateGift: {name: "Ultimate Gift", emoji: "🎭", stars: 5000},
+            ghost: {name: "Ghost", emoji: "👻", stars: 10000},
+            
+            // Ультра редкие (25000+ звезд) 
+            blueGem: {name: "Blue Gem", emoji: "💠", stars: 25000},
+            ninja: {name: "Ninja", emoji: "🥷", stars: 50000}
+        };
+        
+        // Кейсы с настоящими подарками Telegram
         const cases = {
-            starterBox: {
-                name: "Стартер Бокс", emoji: "📦", price: 50,
+            basicGifts: {
+                name: "Базовые Подарки", emoji: "🎁", price: 100,
                 items: [
-                    {name: "Вкусный торт", emoji: "🎂", rarity: "common", chance: 40},
-                    {name: "Зеленая звезда", emoji: "💚", rarity: "common", chance: 30},
-                    {name: "Фейерверк", emoji: "🎆", rarity: "uncommon", chance: 20},
-                    {name: "Синяя звезда", emoji: "💙", rarity: "uncommon", chance: 8},
-                    {name: "Красное сердце", emoji: "❤️", rarity: "rare", chance: 2}
+                    {...realTelegramGifts.deliciousCake, chance: 35},
+                    {...realTelegramGifts.greenStar, chance: 30},
+                    {...realTelegramGifts.fireworks, chance: 20},
+                    {...realTelegramGifts.blueStar, chance: 12},
+                    {...realTelegramGifts.redHeart, chance: 3}
                 ]
             },
-            premiumBox: {
-                name: "Премиум Бокс", emoji: "🎁", price: 150,
+            premiumGifts: {
+                name: "Премиум Подарки", emoji: "💎", price: 250,
                 items: [
-                    {name: "Фейерверк", emoji: "🎆", rarity: "uncommon", chance: 35},
-                    {name: "Синяя звезда", emoji: "💙", rarity: "uncommon", chance: 25},
-                    {name: "Красное сердце", emoji: "❤️", rarity: "rare", chance: 20},
-                    {name: "Золото Премиум", emoji: "👑", rarity: "epic", chance: 15},
-                    {name: "Платина Премиум", emoji: "💎", rarity: "legendary", chance: 5}
+                    {...realTelegramGifts.fireworks, chance: 25},
+                    {...realTelegramGifts.blueStar, chance: 20},
+                    {...realTelegramGifts.redHeart, chance: 18},
+                    {...realTelegramGifts.goldenPremium, chance: 15},
+                    {...realTelegramGifts.platinumPremium, chance: 8},
+                    {...realTelegramGifts.limitedGift, chance: 4}
                 ]
             },
-            mysticalBox: {
-                name: "Мистический Бокс", emoji: "🔮", price: 400,
+            eliteGifts: {
+                name: "Элитные Подарки", emoji: "🏆", price: 500,
                 items: [
-                    {name: "Красное сердце", emoji: "❤️", rarity: "rare", chance: 30},
-                    {name: "Золото Премиум", emoji: "👑", rarity: "epic", chance: 25},
-                    {name: "Платина Премиум", emoji: "💎", rarity: "legendary", chance: 20},
-                    {name: "Лимитированный подарок", emoji: "🔮", rarity: "mythic", chance: 15},
-                    {name: "Космический подарок", emoji: "🌌", rarity: "mythic", chance: 10}
+                    {...realTelegramGifts.redHeart, chance: 20},
+                    {...realTelegramGifts.goldenPremium, chance: 18},
+                    {...realTelegramGifts.platinumPremium, chance: 15},
+                    {...realTelegramGifts.limitedGift, chance: 12},
+                    {...realTelegramGifts.exclusiveGift, chance: 8},
+                    {...realTelegramGifts.legendaryStar, chance: 4},
+                    {...realTelegramGifts.ultimateGift, chance: 2},
+                    {...realTelegramGifts.ghost, chance: 1}
                 ]
             },
-            legendaryBox: {
-                name: "Легендарный Бокс", emoji: "⭐", price: 800,
+            ultimateGifts: {
+                name: "Ультимативные Подарки", emoji: "👹", price: 1000,
                 items: [
-                    {name: "Золото Премиум", emoji: "👑", rarity: "epic", chance: 30},
-                    {name: "Платина Премиум", emoji: "💎", rarity: "legendary", chance: 25},
-                    {name: "Лимитированный подарок", emoji: "🔮", rarity: "mythic", chance: 20},
-                    {name: "Космический подарок", emoji: "🌌", rarity: "mythic", chance: 15},
-                    {name: "Божественный дар", emoji: "✨", rarity: "mythic", chance: 10}
+                    {...realTelegramGifts.platinumPremium, chance: 15},
+                    {...realTelegramGifts.limitedGift, chance: 12},
+                    {...realTelegramGifts.exclusiveGift, chance: 10},
+                    {...realTelegramGifts.legendaryStar, chance: 8},
+                    {...realTelegramGifts.ultimateGift, chance: 6},
+                    {...realTelegramGifts.ghost, chance: 4},
+                    {...realTelegramGifts.blueGem, chance: 2},
+                    {...realTelegramGifts.ninja, chance: 1}
                 ]
             }
         };
@@ -972,6 +1007,9 @@ def webapp():
                     <div class="case-emoji">${caseData.emoji}</div>
                     <div class="case-name">${caseData.name}</div>
                     <div class="case-price">${caseData.price} монет</div>
+                    <div style="font-size: 12px; color: #ccc; margin-top: 5px;">
+                        ${caseData.items.length} подарков внутри
+                    </div>
                 `;
                 
                 grid.appendChild(caseElement);
@@ -979,11 +1017,19 @@ def webapp():
         }
         
         function getRarityFromPrice(price) {
-            if (price <= 100) return "common";
-            if (price <= 200) return "uncommon";
-            if (price <= 400) return "rare";
-            if (price <= 600) return "epic";
-            if (price <= 800) return "legendary";
+            if (price <= 150) return "common";
+            if (price <= 300) return "uncommon"; 
+            if (price <= 600) return "rare";
+            if (price <= 900) return "epic";
+            return "legendary";
+        }
+        
+        function getRarityFromStars(stars) {
+            if (stars <= 5) return "common";
+            if (stars <= 25) return "uncommon";
+            if (stars <= 100) return "rare";
+            if (stars <= 500) return "epic";
+            if (stars <= 2500) return "legendary";
             return "mythic";
         }
         
@@ -1038,14 +1084,32 @@ def webapp():
             openingCase.textContent = caseEmoji;
             resultEmoji.textContent = result.emoji;
             resultName.textContent = result.name;
-            resultRarity.textContent = result.rarity.toUpperCase();
-            resultRarity.className = `result-rarity rarity-${result.rarity}`;
+            
+            // Создаем элемент для отображения стоимости в звездах
+            const starsDisplay = document.createElement("div");
+            starsDisplay.style.cssText = "font-size: 16px; color: #ffd700; margin: 10px 0; font-weight: bold;";
+            starsDisplay.textContent = `⭐ ${result.stars} звезд`;
+            
+            // Определяем редкость по звездам и устанавливаем цвет
+            const actualRarity = getRarityFromStars(result.stars);
+            resultRarity.textContent = actualRarity.toUpperCase();
+            resultRarity.className = `result-rarity rarity-${actualRarity}`;
+            
+            // Добавляем стоимость в звездах перед кнопкой
+            const resultItem = document.querySelector(".result-item");
+            const existingStars = resultItem.querySelector(".stars-display");
+            if (existingStars) {
+                existingStars.remove();
+            }
+            
+            starsDisplay.className = "stars-display";
+            resultItem.insertBefore(starsDisplay, resultItem.lastElementChild);
             
             modal.style.display = "flex";
             
-            // Звук получения предмета
+            // Звук получения предмета базируется на реальной редкости
             setTimeout(() => {
-                playRewardSound(result.rarity);
+                playRewardSound(actualRarity);
             }, 2000);
         }
         
@@ -1053,6 +1117,13 @@ def webapp():
             document.getElementById("openingModal").style.display = "none";
             document.getElementById("inventoryCount").textContent = gameData.inventory.length;
             document.getElementById("casesOpened").textContent = gameData.casesOpened;
+            
+            // Подсчитываем общую стоимость инвентаря в звездах
+            const totalStars = gameData.inventory.reduce((sum, item) => sum + item.stars, 0);
+            const inventoryValue = document.getElementById("inventoryValue");
+            if (inventoryValue) {
+                inventoryValue.textContent = totalStars;
+            }
         }
         
         function playOpenSound() {
