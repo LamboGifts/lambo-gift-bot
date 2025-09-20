@@ -770,58 +770,110 @@ def webapp():
         
         // Создаем звуковые эффекты
         function createSounds() {
-            // Звук ракеты (высокочастотный гул)
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             
+            // Звук ракеты - имитация турбины с модуляцией
             rocketSound = {
                 context: audioContext,
-                oscillator: null,
+                oscillator1: null,
+                oscillator2: null,
                 gainNode: null,
+                filterNode: null,
                 start: function() {
-                    this.oscillator = this.context.createOscillator();
+                    // Основной тон
+                    this.oscillator1 = this.context.createOscillator();
+                    this.oscillator2 = this.context.createOscillator();
                     this.gainNode = this.context.createGain();
+                    this.filterNode = this.context.createBiquadFilter();
                     
-                    this.oscillator.connect(this.gainNode);
+                    this.oscillator1.type = "triangle";
+                    this.oscillator2.type = "sawtooth";
+                    this.filterNode.type = "lowpass";
+                    
+                    this.oscillator1.connect(this.filterNode);
+                    this.oscillator2.connect(this.filterNode);
+                    this.filterNode.connect(this.gainNode);
                     this.gainNode.connect(this.context.destination);
                     
-                    this.oscillator.frequency.setValueAtTime(200, this.context.currentTime);
-                    this.gainNode.gain.setValueAtTime(0.1, this.context.currentTime);
+                    this.oscillator1.frequency.setValueAtTime(80, this.context.currentTime);
+                    this.oscillator2.frequency.setValueAtTime(160, this.context.currentTime);
+                    this.filterNode.frequency.setValueAtTime(400, this.context.currentTime);
+                    this.gainNode.gain.setValueAtTime(0.15, this.context.currentTime);
                     
-                    this.oscillator.start();
+                    this.oscillator1.start();
+                    this.oscillator2.start();
                 },
                 stop: function() {
-                    if (this.oscillator) {
-                        this.gainNode.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.1);
-                        this.oscillator.stop(this.context.currentTime + 0.1);
-                        this.oscillator = null;
+                    if (this.oscillator1 && this.oscillator2) {
+                        this.gainNode.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.2);
+                        this.oscillator1.stop(this.context.currentTime + 0.2);
+                        this.oscillator2.stop(this.context.currentTime + 0.2);
+                        this.oscillator1 = null;
+                        this.oscillator2 = null;
                     }
                 },
                 updatePitch: function(multiplier) {
-                    if (this.oscillator) {
-                        this.oscillator.frequency.setValueAtTime(200 + (multiplier * 50), this.context.currentTime);
+                    if (this.oscillator1 && this.oscillator2) {
+                        const freq1 = 80 + (multiplier * 20);
+                        const freq2 = 160 + (multiplier * 40);
+                        const filterFreq = 400 + (multiplier * 100);
+                        
+                        this.oscillator1.frequency.setValueAtTime(freq1, this.context.currentTime);
+                        this.oscillator2.frequency.setValueAtTime(freq2, this.context.currentTime);
+                        this.filterNode.frequency.setValueAtTime(filterFreq, this.context.currentTime);
                     }
                 }
             };
             
-            // Звук взрыва
+            // Звук взрыва - комбинация шума и низких частот
             crashSound = {
                 context: audioContext,
                 play: function() {
-                    const oscillator = this.context.createOscillator();
-                    const gainNode = this.context.createGain();
+                    // Белый шум для взрыва
+                    const bufferSize = this.context.sampleRate * 0.8;
+                    const buffer = this.context.createBuffer(1, bufferSize, this.context.sampleRate);
+                    const output = buffer.getChannelData(0);
                     
-                    oscillator.connect(gainNode);
-                    gainNode.connect(this.context.destination);
+                    // Генерируем белый шум
+                    for (let i = 0; i < bufferSize; i++) {
+                        output[i] = Math.random() * 2 - 1;
+                    }
                     
-                    oscillator.type = "sawtooth";
-                    oscillator.frequency.setValueAtTime(100, this.context.currentTime);
-                    oscillator.frequency.exponentialRampToValueAtTime(20, this.context.currentTime + 0.5);
+                    const noiseSource = this.context.createBufferSource();
+                    const noiseGain = this.context.createGain();
+                    const noiseFilter = this.context.createBiquadFilter();
                     
-                    gainNode.gain.setValueAtTime(0.3, this.context.currentTime);
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.5);
+                    noiseSource.buffer = buffer;
+                    noiseFilter.type = "lowpass";
+                    noiseFilter.frequency.setValueAtTime(800, this.context.currentTime);
                     
-                    oscillator.start();
-                    oscillator.stop(this.context.currentTime + 0.5);
+                    noiseSource.connect(noiseFilter);
+                    noiseFilter.connect(noiseGain);
+                    noiseGain.connect(this.context.destination);
+                    
+                    noiseGain.gain.setValueAtTime(0.4, this.context.currentTime);
+                    noiseGain.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.8);
+                    noiseFilter.frequency.exponentialRampToValueAtTime(50, this.context.currentTime + 0.5);
+                    
+                    // Добавляем низкочастотный удар
+                    const bassOsc = this.context.createOscillator();
+                    const bassGain = this.context.createGain();
+                    
+                    bassOsc.type = "sine";
+                    bassOsc.frequency.setValueAtTime(40, this.context.currentTime);
+                    bassOsc.frequency.exponentialRampToValueAtTime(10, this.context.currentTime + 0.3);
+                    
+                    bassOsc.connect(bassGain);
+                    bassGain.connect(this.context.destination);
+                    
+                    bassGain.gain.setValueAtTime(0.6, this.context.currentTime);
+                    bassGain.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.4);
+                    
+                    noiseSource.start();
+                    noiseSource.stop(this.context.currentTime + 0.8);
+                    
+                    bassOsc.start();
+                    bassOsc.stop(this.context.currentTime + 0.4);
                 }
             };
         }
