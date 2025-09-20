@@ -7,7 +7,7 @@ from flask import Flask, request
 # Настройки
 TOKEN = "7678954168:AAG6755ngOoYcQfIt6viZKMRXRcv6dOd0vY"
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
-WEBHOOK_URL = "https://lambo-gift.onrender.com"
+WEBHOOK_URL = "https://lambo-gift-bot.onrender.com"
 
 app = Flask(__name__)
 
@@ -394,3 +394,4 @@ if __name__ == "__main__":
     # Запускаем Flask
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
