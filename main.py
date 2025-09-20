@@ -1,9 +1,10 @@
 import json
 import os
 import logging
+import asyncio
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Получаем токен из переменных окружения
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7678954168:AAG6755ngOoYcQfIt6viZKMRXRcv6dOd0vY")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://lambo-gift.onrender.com")  # URL вашего приложения на Render
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://lambo-gift.onrender.com")
 
 # Файл для хранения данных
 DATA_FILE = "data.json"
@@ -44,7 +45,7 @@ def get_user_data(user_id):
     
     if user_id not in data:
         data[user_id] = {
-            "balance": 100,  # Стартовый баланс
+            "balance": 100,
             "gifts_sent": 0,
             "gifts_received": 0,
             "total_spent": 0
@@ -59,7 +60,7 @@ def update_user_data(user_id, updates):
     user_id = str(user_id)
     
     if user_id not in data:
-        get_user_data(user_id)  # Создаем пользователя если его нет
+        get_user_data(user_id)
         data = load_data()
     
     data[user_id].update(updates)
@@ -69,7 +70,7 @@ def update_user_data(user_id, updates):
 GIFTS_CATALOG = {
     "rose": {"name": "🌹 Роза", "price": 10, "emoji": "🌹"},
     "cake": {"name": "🎂 Торт", "price": 25, "emoji": "🎂"},
-    "diamond": {"name": "💎 Бриллiant", "price": 50, "emoji": "💎"},
+    "diamond": {"name": "💎 Бриллиант", "price": 50, "emoji": "💎"},
     "crown": {"name": "👑 Корона", "price": 100, "emoji": "👑"},
     "rocket": {"name": "🚀 Ракета", "price": 75, "emoji": "🚀"},
     "star": {"name": "⭐ Звезда", "price": 30, "emoji": "⭐"}
@@ -130,9 +131,6 @@ async def select_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Подарок не найден!")
         return
     
-    # Сохраняем выбранный подарок в контекст
-    context.user_data['selected_gift'] = gift_id
-    
     keyboard = [
         [InlineKeyboardButton("💸 Купить и отправить", callback_data=f"buy_gift:{gift_id}")],
         [InlineKeyboardButton("🔙 Назад к каталогу", callback_data="catalog")]
@@ -142,7 +140,7 @@ async def select_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(
         f"🎁 {gift_info['name']}\n"
         f"💰 Цена: {gift_info['price']} монет\n\n"
-        f"Чтобы отправить подарок, перешлите это сообщение получателю после покупки!",
+        f"Готовы купить этот подарок?",
         reply_markup=reply_markup
     )
 
@@ -163,7 +161,7 @@ async def buy_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_data['balance'] < gift_info['price']:
         keyboard = [
-            [InlineKeyboardButton("💳 Пополнить баланс", callback_data="add_balance")],
+            [InlineKeyboardButton("💰 Пополнить баланс", callback_data="add_balance")],
             [InlineKeyboardButton("🔙 Назад", callback_data="catalog")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -194,8 +192,7 @@ async def buy_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎁 {gift_info['name']}\n"
         f"💰 Списано: {gift_info['price']} монет\n"
         f"💳 Остаток: {new_balance} монет\n\n"
-        f"📤 Теперь перешлите это сообщение тому, кому хотите подарить!\n"
-        f"Или используйте команду: /send @username",
+        f"🎉 Подарок отправлен!",
         reply_markup=reply_markup
     )
 
@@ -240,15 +237,13 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def add_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пополнение баланса (заглушка)"""
+    """Пополнение баланса"""
     query = update.callback_query
     await query.answer()
     
-    # В реальном боте здесь была бы интеграция с платежной системой
     user_id = query.from_user.id
     user_data = get_user_data(user_id)
     
-    # Даем бонусные монеты (в реальности через платежи)
     bonus = 50
     new_balance = user_data['balance'] + bonus
     update_user_data(user_id, {'balance': new_balance})
@@ -284,10 +279,9 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔄 Как отправить подарок:\n"
         "1. Выберите подарок из каталога\n"
         "2. Купите его за монеты\n"
-        "3. Перешлите сообщение получателю\n\n"
+        "3. Подарок будет отправлен!\n\n"
         "💡 Команды:\n"
-        "/start - главное меню\n"
-        "/send @username - отправить подарок"
+        "/start - главное меню"
     )
     
     await query.edit_message_text(help_text, reply_markup=reply_markup)
@@ -316,49 +310,58 @@ async def back_to_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(welcome_text, reply_markup=reply_markup)
 
-# Создаем приложение
-application = Application.builder().token(TOKEN).build()
+# Создаем приложение Telegram
+telegram_app = Application.builder().token(TOKEN).build()
 
 # Регистрируем обработчики
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CallbackQueryHandler(show_catalog, pattern="^catalog$"))
-application.add_handler(CallbackQueryHandler(select_gift, pattern="^select_gift:"))
-application.add_handler(CallbackQueryHandler(buy_gift, pattern="^buy_gift:"))
-application.add_handler(CallbackQueryHandler(show_balance, pattern="^balance$"))
-application.add_handler(CallbackQueryHandler(show_stats, pattern="^stats$"))
-application.add_handler(CallbackQueryHandler(add_balance, pattern="^add_balance$"))
-application.add_handler(CallbackQueryHandler(show_help, pattern="^help$"))
-application.add_handler(CallbackQueryHandler(back_to_main, pattern="^back_to_main$"))
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CallbackQueryHandler(show_catalog, pattern="^catalog$"))
+telegram_app.add_handler(CallbackQueryHandler(select_gift, pattern="^select_gift:"))
+telegram_app.add_handler(CallbackQueryHandler(buy_gift, pattern="^buy_gift:"))
+telegram_app.add_handler(CallbackQueryHandler(show_balance, pattern="^balance$"))
+telegram_app.add_handler(CallbackQueryHandler(show_stats, pattern="^stats$"))
+telegram_app.add_handler(CallbackQueryHandler(add_balance, pattern="^add_balance$"))
+telegram_app.add_handler(CallbackQueryHandler(show_help, pattern="^help$"))
+telegram_app.add_handler(CallbackQueryHandler(back_to_main, pattern="^back_to_main$"))
 
 @app.route("/")
 def index():
     return "🎁 GiftBot is running! ✅"
 
 @app.route(f"/{TOKEN}", methods=["POST"])
-async def webhook():
+def webhook():
     """Webhook для получения обновлений"""
     try:
-        update = Update.de_json(request.get_json(force=True), application.bot)
-        await application.process_update(update)
+        update_data = request.get_json(force=True)
+        update = Update.de_json(update_data, telegram_app.bot)
+        
+        # Обрабатываем обновление в новом event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(telegram_app.process_update(update))
+        loop.close()
+        
         return "OK"
     except Exception as e:
         logger.error(f"Ошибка обработки webhook: {e}")
         return "ERROR", 500
 
-async def set_webhook():
+def setup_webhook():
     """Устанавливает webhook"""
-    if WEBHOOK_URL:
+    try:
         webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
-        await application.bot.set_webhook(url=webhook_url)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(telegram_app.bot.set_webhook(url=webhook_url))
+        loop.close()
         logger.info(f"Webhook установлен: {webhook_url}")
+    except Exception as e:
+        logger.error(f"Ошибка установки webhook: {e}")
 
 if __name__ == "__main__":
-    if WEBHOOK_URL:
-        # Запуск в режиме webhook (для Render)
-        import asyncio
-        asyncio.run(set_webhook())
-        port = int(os.environ.get("PORT", 10000))
-        app.run(host="0.0.0.0", port=port, debug=False)
-    else:
-        # Локальный запуск (polling)
-        application.run_polling()
+    # Устанавливаем webhook при запуске
+    setup_webhook()
+    
+    # Запуск Flask приложения
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False)
