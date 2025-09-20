@@ -1,4 +1,217 @@
-import os
+// Запускаем все источники
+                    this.mainEngine.start();
+                    this.turbulence.start();
+                    this.highFreq.start();
+                },
+                
+                createNoiseBuffer: function(duration) {
+                    const bufferSize = this.context.sampleRate * duration;
+                    const buffer = this.context.createBuffer(1, bufferSize, this.context.sampleRate);
+                    const output = buffer.getChannelData(0);
+                    
+                    // Создаем розовый шум (более реалистичный чем белый)
+                    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+                    for (let i = 0; i < bufferSize; i++) {
+                        const white = Math.random() * 2 - 1;
+                        b0 = 0.99886 * b0 + white * 0.0555179;
+                        b1 = 0.99332 * b1 + white * 0.0750759;
+                        b2 = 0.96900 * b2 + white * 0.1538520;
+                        b3 = 0.86650 * b3 + white * 0.3104856;
+                        b4 = 0.55000 * b4 + white * 0.5329522;
+                        b5 = -0.7616 * b5 - white * 0.0168980;
+                        const pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                        b6 = white * 0.115926;
+                        output[i] = pink * 0.11;
+                    }
+                    return buffer;
+                },
+                
+                updatePitch: function(multiplier) {
+                    if (!this.isPlaying) return;
+                    
+                    // Увеличиваем частоты и интенсивность с ростом множителя
+                    const intensityFactor = 1 + (multiplier - 1) * 0.3;
+                    const frequencyFactor = 1 + (multiplier - 1) * 0.2;
+                    
+                    if (this.mainEngine) {
+                        const newFreq = 80 * frequencyFactor;
+                        this.mainEngine.frequency.setValueAtTime(newFreq, this.context.currentTime);
+                    }
+                    
+                    if (this.highFreq) {
+                        const newHighFreq = 1200 * frequencyFactor;
+                        this.highFreq.frequency.setValueAtTime(newHighFreq, this.context.currentTime);
+                    }
+                    
+                    // Обновляем громкость
+                    this.gainNodes.forEach((gainNode, index) => {
+                        const baseGains = [0.15, 0.08, 0.05];
+                        const newGain = baseGains[index] * intensityFactor;
+                        gainNode.gain.setValueAtTime(Math.min(newGain, 0.25), this.context.currentTime);
+                    });
+                    
+                    // Обновляем фильтры для более реалистичного звука
+                    if (this.filterNodes[0]) { // main filter
+                        const newCutoff = 400 + (multiplier - 1) * 100;
+                        this.filterNodes[0].frequency.setValueAtTime(newCutoff, this.context.currentTime);
+                    }
+                    
+                    if (this.filterNodes[1]) { // turbulence filter
+                        const newBandpass = 800 + (multiplier - 1) * 200;
+                        this.filterNodes[1].frequency.setValueAtTime(newBandpass, this.context.currentTime);
+                    }
+                },
+                
+                stop: function() {
+                    if (!this.isPlaying) return;
+                    this.isPlaying = false;
+                    
+                    // Плавное затухание
+                    this.gainNodes.forEach(gainNode => {
+                        gainNode.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.5);
+                    });
+                    
+                    // Останавливаем через 0.5 секунд
+                    setTimeout(() => {
+                        if (this.mainEngine) {
+                            this.mainEngine.stop();
+                            this.mainEngine = null;
+                        }
+                        if (this.turbulence) {
+                            this.turbulence.stop();
+                            this.turbulence = null;
+                        }
+                        if (this.highFreq) {
+                            this.highFreq.stop();
+                            this.highFreq = null;
+                        }
+                        this.gainNodes = [];
+                        this.filterNodes = [];
+                    }, 500);
+                }
+            };
+            
+            // Более реалистичный звук взрыва с несколькими фазами
+            crashSound = {
+                context: audioContext,
+                play: function() {
+                    // Фаза 1: Начальный взрыв
+                    this.playInitialBang();
+                    
+                    // Фаза 2: Эхо и реверберация (через 200мс)
+                    setTimeout(() => this.playEcho(), 200);
+                    
+                    // Фаза 3: Затухающие обломки (через 600мс)
+                    setTimeout(() => this.playDebris(), 600);
+                },
+                
+                playInitialBang: function() {
+                    // Создаем импульсивный взрыв
+                    const noiseBuffer = this.createExplosionBuffer(0.3);
+                    const noiseSource = this.context.createBufferSource();
+                    const noiseGain = this.context.createGain();
+                    const noiseFilter = this.context.createBiquadFilter();
+                    
+                    noiseSource.buffer = noiseBuffer;
+                    noiseFilter.type = "lowpass";
+                    noiseFilter.frequency.setValueAtTime(1200, this.context.currentTime);
+                    noiseFilter.Q.setValueAtTime(0.7, this.context.currentTime);
+                    
+                    noiseSource.connect(noiseFilter);
+                    noiseFilter.connect(noiseGain);
+                    noiseGain.connect(this.context.destination);
+                    
+                    noiseGain.gain.setValueAtTime(0.6, this.context.currentTime);
+                    noiseGain.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.3);
+                    noiseFilter.frequency.exponentialRampToValueAtTime(80, this.context.currentTime + 0.25);
+                    
+                    // Низкочастотный удар
+                    const bassOsc = this.context.createOscillator();
+                    const bassGain = this.context.createGain();
+                    
+                    bassOsc.type = "sine";
+                    bassOsc.frequency.setValueAtTime(30, this.context.currentTime);
+                    bassOsc.frequency.exponentialRampToValueAtTime(5, this.context.currentTime + 0.4);
+                    
+                    bassOsc.connect(bassGain);
+                    bassGain.connect(this.context.destination);
+                    
+                    bassGain.gain.setValueAtTime(0.8, this.context.currentTime);
+                    bassGain.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.4);
+                    
+                    noiseSource.start();
+                    bassOsc.start();
+                    
+                    noiseSource.stop(this.context.currentTime + 0.3);
+                    bassOsc.stop(this.context.currentTime + 0.4);
+                },
+                
+                playEcho: function() {
+                    // Эхо взрыва
+                    const echoBuffer = this.createExplosionBuffer(0.2);
+                    const echoSource = this.context.createBufferSource();
+                    const echoGain = this.context.createGain();
+                    const echoFilter = this.context.createBiquadFilter();
+                    
+                    echoSource.buffer = echoBuffer;
+                    echoFilter.type = "highpass";
+                    echoFilter.frequency.setValueAtTime(200, this.context.currentTime);
+                    
+                    echoSource.connect(echoFilter);
+                    echoFilter.connect(echoGain);
+                    echoGain.connect(this.context.destination);
+                    
+                    echoGain.gain.setValueAtTime(0.3, this.context.currentTime);
+                    echoGain.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.2);
+                    
+                    echoSource.start();
+                    echoSource.stop(this.context.currentTime + 0.2);
+                },
+                
+                playDebris: function() {
+                    // Звук падающих обломков
+                    for (let i = 0; i < 3; i++) {
+                        setTimeout(() => {
+                            const debris = this.context.createOscillator();
+                            const debrisGain = this.context.createGain();
+                            const debrisFilter = this.context.createBiquadFilter();
+                            
+                            debris.type = "sawtooth";
+                            debris.frequency.setValueAtTime(150 + Math.random() * 300, this.context.currentTime);
+                            debris.frequency.exponentialRampToValueAtTime(50 + Math.random() * 100, this.context.currentTime + 0.5);
+                            
+                            debrisFilter.type = "bandpass";
+                            debrisFilter.frequency.setValueAtTime(400 + Math.random() * 800, this.context.currentTime);
+                            debrisFilter.Q.setValueAtTime(2, this.context.currentTime);
+                            
+                            debris.connect(debrisFilter);
+                            debrisFilter.connect(debrisGain);
+                            debrisGain.connect(this.context.destination);
+                            
+                            debrisGain.gain.setValueAtTime(0.1, this.context.currentTime);
+                            debrisGain.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.5);
+                            
+                            debris.start();
+                            debris.stop(this.context.currentTime + 0.5);
+                        }, i * 150);
+                    }
+                },
+                
+                createExplosionBuffer: function(duration) {
+                    const bufferSize = this.context.sampleRate * duration;
+                    const buffer = this.context.createBuffer(1, bufferSize, this.context.sampleRate);
+                    const output = buffer.getChannelData(0);
+                    
+                    // Создаем шум взрыва с затуханием
+                    for (let i = 0; i < bufferSize; i++) {
+                        const decay = 1 - (i / bufferSize);
+                        const intensity = Math.pow(decay, 0.3);
+                        output[i] = (Math.random() * 2 - 1) * intensity;
+                    }
+                    return buffer;
+                }
+            };
+        }import os
 import requests
 import json
 import random
@@ -28,16 +241,178 @@ users = {}
 current_crash_game = None
 game_lock = threading.Lock()
 
-# Система подарков как в GiftUp
-GIFTS = {
-    "delicious_cake": {"name": "🎂 Вкусный торт", "price": 1, "emoji": "🎂", "rarity": "common"},
-    "green_star": {"name": "💚 Зеленая звезда", "price": 2, "emoji": "💚", "rarity": "common"},
-    "fireworks": {"name": "🎆 Фейерверк", "price": 5, "emoji": "🎆", "rarity": "uncommon"},
-    "blue_star": {"name": "💙 Синяя звезда", "price": 10, "emoji": "💙", "rarity": "uncommon"},
-    "red_heart": {"name": "❤️ Красное сердце", "price": 25, "emoji": "❤️", "rarity": "rare"},
-    "golden_premium": {"name": "👑 Золото Премиум", "price": 100, "emoji": "👑", "rarity": "epic"},
-    "platinum_premium": {"name": "💎 Платина Премиум", "price": 250, "emoji": "💎", "rarity": "legendary"},
-    "limited_gift": {"name": "🔮 Лимитированный подарок", "price": 500, "emoji": "🔮", "rarity": "mythic"}
+# Обновленная система подарков на основе реальных Telegram Gifts
+REAL_TELEGRAM_GIFTS = {
+    # Hanging Star (самые дорогие)
+    "hanging_star_1649": {"name": "💫 Hanging Star", "stars": 1649, "emoji": "💫", "rarity": "mythic"},
+    "hanging_star_1554": {"name": "💫 Hanging Star", "stars": 1554, "emoji": "💫", "rarity": "mythic"},
+    "hanging_star_1545": {"name": "💫 Hanging Star", "stars": 1545, "emoji": "💫", "rarity": "legendary"},
+    "hanging_star_1500": {"name": "💫 Hanging Star", "stars": 1500, "emoji": "💫", "rarity": "legendary"},
+    "hanging_star_1499": {"name": "💫 Hanging Star", "stars": 1499, "emoji": "💫", "rarity": "legendary"},
+    "hanging_star_1443": {"name": "💫 Hanging Star", "stars": 1443, "emoji": "💫", "rarity": "legendary"},
+    "hanging_star_1422": {"name": "💫 Hanging Star", "stars": 1422, "emoji": "💫", "rarity": "epic"},
+    
+    # Mad Pumpkin (дорогие хэллоуин подарки)
+    "mad_pumpkin_5151": {"name": "🎃 Mad Pumpkin", "stars": 5151, "emoji": "🎃", "rarity": "mythic"},
+    "mad_pumpkin_5125": {"name": "🎃 Mad Pumpkin", "stars": 5125, "emoji": "🎃", "rarity": "mythic"},
+    "mad_pumpkin_5043": {"name": "🎃 Mad Pumpkin", "stars": 5043, "emoji": "🎃", "rarity": "mythic"},
+    "mad_pumpkin_4945": {"name": "🎃 Mad Pumpkin", "stars": 4945, "emoji": "🎃", "rarity": "mythic"},
+    "mad_pumpkin_4739": {"name": "🎃 Mad Pumpkin", "stars": 4739, "emoji": "🎃", "rarity": "mythic"},
+    "mad_pumpkin_4533": {"name": "🎃 Mad Pumpkin", "stars": 4533, "emoji": "🎃", "rarity": "mythic"},
+    "mad_pumpkin_4431": {"name": "🎃 Mad Pumpkin", "stars": 4431, "emoji": "🎃", "rarity": "mythic"},
+    
+    # Evil Eye (средне-дорогие)
+    "evil_eye_979": {"name": "👁 Evil Eye", "stars": 979, "emoji": "👁", "rarity": "legendary"},
+    "evil_eye_969": {"name": "👁 Evil Eye", "stars": 969, "emoji": "👁", "rarity": "legendary"},
+    "evil_eye_967": {"name": "👁 Evil Eye", "stars": 967, "emoji": "👁", "rarity": "legendary"},
+    "evil_eye_960": {"name": "👁 Evil Eye", "stars": 960, "emoji": "👁", "rarity": "legendary"},
+    "evil_eye_948": {"name": "👁 Evil Eye", "stars": 948, "emoji": "👁", "rarity": "legendary"},
+    "evil_eye_946": {"name": "👁 Evil Eye", "stars": 946, "emoji": "👁", "rarity": "epic"},
+    "evil_eye_897": {"name": "👁 Evil Eye", "stars": 897, "emoji": "👁", "rarity": "epic"},
+    "evil_eye_892": {"name": "👁 Evil Eye", "stars": 892, "emoji": "👁", "rarity": "epic"},
+    "evil_eye_886": {"name": "👁 Evil Eye", "stars": 886, "emoji": "👁", "rarity": "epic"},
+    "evil_eye_874": {"name": "👁 Evil Eye", "stars": 874, "emoji": "👁", "rarity": "epic"},
+    
+    # Jelly Bunny (средние)
+    "jelly_bunny_925": {"name": "🐰 Jelly Bunny", "stars": 925, "emoji": "🐰", "rarity": "legendary"},
+    "jelly_bunny_923": {"name": "🐰 Jelly Bunny", "stars": 923, "emoji": "🐰", "rarity": "legendary"},
+    "jelly_bunny_921": {"name": "🐰 Jelly Bunny", "stars": 921, "emoji": "🐰", "rarity": "legendary"},
+    "jelly_bunny_905": {"name": "🐰 Jelly Bunny", "stars": 905, "emoji": "🐰", "rarity": "epic"},
+    "jelly_bunny_900": {"name": "🐰 Jelly Bunny", "stars": 900, "emoji": "🐰", "rarity": "epic"},
+    "jelly_bunny_894": {"name": "🐰 Jelly Bunny", "stars": 894, "emoji": "🐰", "rarity": "epic"},
+    "jelly_bunny_867": {"name": "🐰 Jelly Bunny", "stars": 867, "emoji": "🐰", "rarity": "epic"},
+    "jelly_bunny_865": {"name": "🐰 Jelly Bunny", "stars": 865, "emoji": "🐰", "rarity": "epic"},
+    "jelly_bunny_824": {"name": "🐰 Jelly Bunny", "stars": 824, "emoji": "🐰", "rarity": "rare"},
+    "jelly_bunny_818": {"name": "🐰 Jelly Bunny", "stars": 818, "emoji": "🐰", "rarity": "rare"},
+    "jelly_bunny_816": {"name": "🐰 Jelly Bunny", "stars": 816, "emoji": "🐰", "rarity": "rare"},
+    
+    # B-Day Candle (дешевые)
+    "bday_candle_334": {"name": "🕯 B-Day Candle", "stars": 334, "emoji": "🕯", "rarity": "uncommon"},
+    "bday_candle_319": {"name": "🕯 B-Day Candle", "stars": 319, "emoji": "🕯", "rarity": "uncommon"},
+    "bday_candle_317": {"name": "🕯 B-Day Candle", "stars": 317, "emoji": "🕯", "rarity": "uncommon"},
+    "bday_candle_309": {"name": "🕯 B-Day Candle", "stars": 309, "emoji": "🕯", "rarity": "uncommon"},
+    "bday_candle_307": {"name": "🕯 B-Day Candle", "stars": 307, "emoji": "🕯", "rarity": "common"},
+    
+    # Desk Calendar (средне-дешевые)
+    "desk_calendar_301": {"name": "📅 Desk Calendar", "stars": 301, "emoji": "📅", "rarity": "uncommon"},
+    "desk_calendar_299": {"name": "📅 Desk Calendar", "stars": 299, "emoji": "📅", "rarity": "uncommon"},
+    "desk_calendar_295": {"name": "📅 Desk Calendar", "stars": 295, "emoji": "📅", "rarity": "uncommon"},
+    "desk_calendar_289": {"name": "📅 Desk Calendar", "stars": 289, "emoji": "📅", "rarity": "uncommon"},
+    "desk_calendar_287": {"name": "📅 Desk Calendar", "stars": 287, "emoji": "📅", "rarity": "common"},
+    "desk_calendar_199": {"name": "📅 Desk Calendar", "stars": 199, "emoji": "📅", "rarity": "common"},
+    
+    # Базовые дешевые подарки
+    "delicious_cake": {"name": "🎂 Delicious Cake", "stars": 1, "emoji": "🎂", "rarity": "common"},
+    "green_star": {"name": "💚 Green Star", "stars": 2, "emoji": "💚", "rarity": "common"},
+    "fireworks": {"name": "🎆 Fireworks", "stars": 5, "emoji": "🎆", "rarity": "common"},
+    "blue_star": {"name": "💙 Blue Star", "stars": 10, "emoji": "💙", "rarity": "common"},
+    "red_heart": {"name": "❤️ Red Heart", "stars": 25, "emoji": "❤️", "rarity": "uncommon"},
+}
+
+# Кейсы с реалистичными подарками и шансами
+CASES = {
+    "basic_gifts": {
+        "name": "Базовые Подарки", 
+        "emoji": "🎁", 
+        "price": 50,
+        "items": [
+            {"id": "delicious_cake", "chance": 35},
+            {"id": "green_star", "chance": 30},
+            {"id": "fireworks", "chance": 20},
+            {"id": "blue_star", "chance": 12},
+            {"id": "red_heart", "chance": 3}
+        ]
+    },
+    "calendar_case": {
+        "name": "Календарные Подарки", 
+        "emoji": "📅", 
+        "price": 150,
+        "items": [
+            {"id": "desk_calendar_199", "chance": 25},
+            {"id": "desk_calendar_287", "chance": 20},
+            {"id": "desk_calendar_289", "chance": 18},
+            {"id": "desk_calendar_295", "chance": 15},
+            {"id": "desk_calendar_299", "chance": 12},
+            {"id": "desk_calendar_301", "chance": 10}
+        ]
+    },
+    "birthday_case": {
+        "name": "День Рождения", 
+        "emoji": "🕯", 
+        "price": 200,
+        "items": [
+            {"id": "bday_candle_307", "chance": 25},
+            {"id": "bday_candle_309", "chance": 20},
+            {"id": "bday_candle_317", "chance": 18},
+            {"id": "bday_candle_319", "chance": 15},
+            {"id": "bday_candle_334", "chance": 12},
+            {"id": "red_heart", "chance": 10}
+        ]
+    },
+    "bunny_case": {
+        "name": "Желейные Кролики", 
+        "emoji": "🐰", 
+        "price": 500,
+        "items": [
+            {"id": "jelly_bunny_816", "chance": 20},
+            {"id": "jelly_bunny_818", "chance": 18},
+            {"id": "jelly_bunny_824", "chance": 16},
+            {"id": "jelly_bunny_865", "chance": 14},
+            {"id": "jelly_bunny_867", "chance": 12},
+            {"id": "jelly_bunny_894", "chance": 8},
+            {"id": "jelly_bunny_900", "chance": 6},
+            {"id": "jelly_bunny_905", "chance": 4},
+            {"id": "jelly_bunny_921", "chance": 2}
+        ]
+    },
+    "evil_eye_case": {
+        "name": "Дурной Глаз", 
+        "emoji": "👁", 
+        "price": 750,
+        "items": [
+            {"id": "evil_eye_874", "chance": 20},
+            {"id": "evil_eye_886", "chance": 18},
+            {"id": "evil_eye_892", "chance": 16},
+            {"id": "evil_eye_897", "chance": 14},
+            {"id": "evil_eye_946", "chance": 12},
+            {"id": "evil_eye_948", "chance": 8},
+            {"id": "evil_eye_960", "chance": 6},
+            {"id": "evil_eye_967", "chance": 4},
+            {"id": "evil_eye_969", "chance": 1.5},
+            {"id": "evil_eye_979", "chance": 0.5}
+        ]
+    },
+    "hanging_star_case": {
+        "name": "Висящие Звезды", 
+        "emoji": "💫", 
+        "price": 1000,
+        "items": [
+            {"id": "hanging_star_1422", "chance": 25},
+            {"id": "hanging_star_1443", "chance": 20},
+            {"id": "hanging_star_1499", "chance": 15},
+            {"id": "hanging_star_1500", "chance": 12},
+            {"id": "hanging_star_1545", "chance": 10},
+            {"id": "hanging_star_1554", "chance": 8},
+            {"id": "hanging_star_1649", "chance": 5},
+            {"id": "evil_eye_979", "chance": 5}
+        ]
+    },
+    "ultimate_pumpkin_case": {
+        "name": "Безумные Тыквы", 
+        "emoji": "🎃", 
+        "price": 2000,
+        "items": [
+            {"id": "mad_pumpkin_4431", "chance": 20},
+            {"id": "mad_pumpkin_4533", "chance": 18},
+            {"id": "mad_pumpkin_4739", "chance": 15},
+            {"id": "mad_pumpkin_4945", "chance": 12},
+            {"id": "mad_pumpkin_5043", "chance": 10},
+            {"id": "mad_pumpkin_5125", "chance": 8},
+            {"id": "mad_pumpkin_5151", "chance": 5},
+            {"id": "hanging_star_1649", "chance": 7},
+            {"id": "evil_eye_979", "chance": 5}
+        ]
+    }
 }
 
 class CrashGame:
@@ -155,7 +530,8 @@ def get_user_data(user_id):
             "experience": 0,
             "achievements": [],
             "inventory": {},
-            "referrals": []
+            "referrals": [],
+            "cases_opened": 0
         }
     return users[user_id]
 
@@ -326,1202 +702,51 @@ def handle_cashout(chat_id, callback_query_id):
 def handle_gift_shop(chat_id, message_id):
     keyboard = {"inline_keyboard": []}
     
-    rarities = {
-        "common": [],
-        "uncommon": [],
-        "rare": [],
-        "epic": [],
-        "legendary": [],
-        "mythic": []
-    }
-    
-    for gift_id, gift_info in GIFTS.items():
-        rarities[gift_info['rarity']].append((gift_id, gift_info))
-    
-    for rarity, gifts in rarities.items():
-        if gifts:
-            rarity_names = {
-                "common": "⚪ Обычные",
-                "uncommon": "🟢 Необычные", 
-                "rare": "🔵 Редкие",
-                "epic": "🟣 Эпические",
-                "legendary": "🟡 Легендарные",
-                "mythic": "🔴 Мифические"
-            }
-            keyboard["inline_keyboard"].append([{
-                "text": rarity_names[rarity],
-                "callback_data": f"rarity_{rarity}"
-            }])
+    for case_id, case_info in CASES.items():
+        keyboard["inline_keyboard"].append([{
+            "text": f"{case_info['emoji']} {case_info['name']} - {case_info['price']} монет",
+            "callback_data": f"open_{case_id}"
+        }])
     
     keyboard["inline_keyboard"].append([{"text": "🔙 Назад", "callback_data": "main"}])
     
-    text = """🎁 <b>Магазин подарков</b>
+    text = f"""🎁 <b>Магазин подарков</b>
 
-Выберите категорию подарков:
+Выберите кейс для открытия:
 
-⚪ <b>Обычные</b> - доступные подарки
-🟢 <b>Необычные</b> - более редкие
-🔵 <b>Редкие</b> - ценные подарки
-🟣 <b>Эпические</b> - очень редкие
-🟡 <b>Легендарные</b> - эксклюзивные
-🔴 <b>Мифические</b> - уникальные
+💡 <b>Как работает:</b>
+• Каждый кейс содержит разные подарки
+• Чем дороже подарок, тем меньше шанс его получить
+• Подарки оцениваются в звездах ⭐
+• Собирайте редкие подарки!
 
-💡 <i>Подарки можно отправлять друзьям!</i>"""
-
-    edit_message(chat_id, message_id, text, keyboard)
-
-def handle_rarity_selection(chat_id, message_id, rarity):
-    keyboard = {"inline_keyboard": []}
-    
-    for gift_id, gift_info in GIFTS.items():
-        if gift_info['rarity'] == rarity:
-            keyboard["inline_keyboard"].append([{
-                "text": f"{gift_info['emoji']} {gift_info['name']} - {gift_info['price']} монет",
-                "callback_data": f"buy_{gift_id}"
-            }])
-    
-    keyboard["inline_keyboard"].append([
-        {"text": "🔙 К категориям", "callback_data": "gift_shop"},
-        {"text": "🏠 Главное меню", "callback_data": "main"}
-    ])
-    
-    rarity_names = {
-        "common": "⚪ Обычные",
-        "uncommon": "🟢 Необычные", 
-        "rare": "🔵 Редкие",
-        "epic": "🟣 Эпические",
-        "legendary": "🟡 Легендарные",
-        "mythic": "🔴 Мифические"
-    }
-    
-    text = f"""🎁 <b>{rarity_names[rarity]} подарки</b>
-
-Выберите подарок для покупки:"""
+🎯 <b>Типы редкости:</b>
+• ⚪ Обычные (1-25 ⭐)
+• 🟢 Необычные (26-100 ⭐) 
+• 🔵 Редкие (101-500 ⭐)
+• 🟣 Эпические (501-1000 ⭐)
+• 🟡 Легендарные (1001-2000 ⭐)
+• 🔴 Мифические (2000+ ⭐)"""
 
     edit_message(chat_id, message_id, text, keyboard)
 
-def handle_buy_gift(chat_id, message_id, gift_id):
+def open_case(chat_id, message_id, case_id):
     user_data = get_user_data(chat_id)
-    gift = GIFTS.get(gift_id)
+    case = CASES.get(case_id)
     
-    if not gift:
+    if not case:
         return
     
-    if user_data['balance'] < gift['price']:
+    if user_data['balance'] < case['price']:
         keyboard = {
             "inline_keyboard": [
                 [{"text": "💰 Получить бонус", "callback_data": "daily_bonus"}],
-                [{"text": "🔙 К подаркам", "callback_data": "gift_shop"}]
+                [{"text": "🔙 К кейсам", "callback_data": "gift_shop"}]
             ]
         }
         text = f"""❌ <b>Недостаточно средств!</b>
 
 💰 <b>Баланс:</b> {user_data['balance']} монет
-💸 <b>Нужно:</b> {gift['price']} монет
+💸 <b>Нужно:</b> {case['price']} монет
 
-{gift['emoji']} <b>{gift['name']}</b>"""
-        edit_message(chat_id, message_id, text, keyboard)
-        return
-    
-    user_data['balance'] -= gift['price']
-    user_data['gifts_sent'] += 1
-    user_data['total_spent'] += gift['price']
-    user_data['experience'] += gift['price'] // 10
-    
-    if gift_id not in user_data['inventory']:
-        user_data['inventory'][gift_id] = 0
-    user_data['inventory'][gift_id] += 1
-    
-    keyboard = {
-        "inline_keyboard": [
-            [{"text": "🎁 Купить еще", "callback_data": "gift_shop"}],
-            [{"text": "🏠 Главное меню", "callback_data": "main"}]
-        ]
-    }
-    
-    text = f"""✅ <b>Подарок куплен!</b>
-
-🎁 <b>{gift['name']}</b>
-💰 <b>Списано:</b> {gift['price']} монет  
-💳 <b>Остаток:</b> {user_data['balance']} монет
-⭐ <b>Получено XP:</b> {gift['price'] // 10}
-
-🎉 <b>Подарок добавлен в инвентарь!</b>"""
-
-    edit_message(chat_id, message_id, text, keyboard)
-
-def handle_daily_bonus(chat_id, message_id):
-    user_data = get_user_data(chat_id)
-    
-    # Проверяем, можно ли получить бонус
-    now = datetime.now()
-    last_bonus = user_data.get('last_bonus')
-    
-    if last_bonus:
-        last_bonus_date = datetime.fromisoformat(last_bonus)
-        if (now - last_bonus_date).days < 1:
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🔙 Назад", "callback_data": "main"}]
-                ]
-            }
-            hours_left = 24 - (now - last_bonus_date).seconds // 3600
-            text = f"""⏰ <b>Ежедневный бонус уже получен!</b>
-
-Следующий бонус через {hours_left} часов
-
-💰 <b>Текущий баланс:</b> {user_data['balance']} монет"""
-            edit_message(chat_id, message_id, text, keyboard)
-            return
-    
-    # Выдаем бонус
-    bonus_amount = random.randint(100, 500)
-    user_data['balance'] += bonus_amount
-    user_data['last_bonus'] = now.isoformat()
-    user_data['experience'] += 50
-    
-    keyboard = {
-        "inline_keyboard": [
-            [{"text": "🚀 Играть", "callback_data": "play_crash"}],
-            [{"text": "🏠 Главное меню", "callback_data": "main"}]
-        ]
-    }
-    
-    text = f"""🎉 <b>Ежедневный бонус получен!</b>
-
-💰 <b>Получено:</b> {bonus_amount} монет
-⭐ <b>Получено XP:</b> 50
-💳 <b>Новый баланс:</b> {user_data['balance']} монет
-
-🎁 Возвращайтесь завтра за новым бонусом!"""
-
-    edit_message(chat_id, message_id, text, keyboard)
-
-def game_loop():
-    global current_crash_game
-    
-    while True:
-        try:
-            with game_lock:
-                current_crash_game = CrashGame()
-                
-                # Ожидание между играми
-                time.sleep(10)
-                
-                # Запуск новой игры
-                current_crash_game.start_round()
-                
-                # Игровой цикл
-                while current_crash_game.is_running and not current_crash_game.is_crashed:
-                    current_crash_game.update_multiplier()
-                    
-                    # Проверка авто-вывода
-                    for user_id in list(current_crash_game.bets.keys()):
-                        bet_info = current_crash_game.bets[user_id]
-                        if (bet_info.get('auto_cashout') and 
-                            current_crash_game.multiplier >= bet_info['auto_cashout'] and
-                            user_id not in current_crash_game.cashed_out):
-                            current_crash_game.cashout(user_id)
-                    
-                    time.sleep(0.1)
-                
-                # Обеспечиваем краш если игра завершилась не крашем
-                if not current_crash_game.is_crashed:
-                    current_crash_game.crash()
-                
-                # Пауза после краша
-                time.sleep(10)
-                
-        except Exception as e:
-            logger.error(f"Game loop error: {e}")
-            time.sleep(5)
-
-# Запуск игрового цикла в отдельном потоке
-game_thread = threading.Thread(target=game_loop)
-game_thread.daemon = True
-game_thread.start()
-
-@app.route("/")
-def home():
-    return """
-    <h1>🎁 GiftBot Crash Game 🚀</h1>
-    <p>Telegram bot в стиле GiftUp</p>
-    """
-
-def handle_webhook_callback(chat_id, message_id, callback_data, user_name):
-    try:
-        if callback_data == "main":
-            user_data = get_user_data(chat_id)
-            text = f"""🎁 <b>GiftBot - {user_name}</b>
-
-💰 <b>Баланс:</b> {user_data['balance']} монет
-🎯 <b>Уровень:</b> {user_data['level']} ({user_data['experience']} XP)
-
-Выберите действие:"""
-            edit_message(chat_id, message_id, text, main_menu_keyboard())
-            
-        elif callback_data == "play_crash":
-            handle_crash_game(chat_id, message_id)
-            
-        elif callback_data.startswith("bet_"):
-            amount = int(callback_data.split("_")[1])
-            handle_bet(chat_id, message_id, amount)
-            
-        elif callback_data == "cashout":
-            handle_cashout(chat_id, "")
-            handle_crash_game(chat_id, message_id)
-            
-        elif callback_data == "gift_shop":
-            handle_gift_shop(chat_id, message_id)
-            
-        elif callback_data.startswith("rarity_"):
-            rarity = callback_data.replace("rarity_", "")
-            handle_rarity_selection(chat_id, message_id, rarity)
-            
-        elif callback_data.startswith("buy_"):
-            gift_id = callback_data.replace("buy_", "")
-            handle_buy_gift(chat_id, message_id, gift_id)
-            
-        elif callback_data == "daily_bonus":
-            handle_daily_bonus(chat_id, message_id)
-            
-        elif callback_data in ["balance", "stats"]:
-            user_data = get_user_data(chat_id)
-            win_rate = (user_data['games_won'] / max(user_data['games_played'], 1)) * 100
-            
-            text = f"""📊 <b>Статистика - {user_name}</b>
-
-💰 <b>Баланс:</b> {user_data['balance']} монет
-🎯 <b>Уровень:</b> {user_data['level']} (XP: {user_data['experience']})
-
-🎮 <b>Игровая статистика:</b>
-• Игр сыграно: {user_data['games_played']}
-• Побед: {user_data['games_won']}
-• Поражений: {user_data['games_lost']}
-• Винрейт: {win_rate:.1f}%
-
-💸 <b>Финансы:</b>
-• Поставлено: {user_data['total_bet']} монет
-• Выиграно: {user_data['total_won']} монет
-• Потеряно: {user_data['total_lost']} монет
-
-🎁 <b>Подарки:</b>
-• Отправлено: {user_data['gifts_sent']}
-• Потрачено: {user_data['total_spent']} монет"""
-
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🚀 Играть", "callback_data": "play_crash"}],
-                    [{"text": "🔙 Назад", "callback_data": "main"}]
-                ]
-            }
-            edit_message(chat_id, message_id, text, keyboard)
-            
-        elif callback_data == "referrals":
-            user_data = get_user_data(chat_id)
-            referral_count = len(user_data.get('referrals', []))
-            
-            text = f"""👥 <b>Реферальная система</b>
-
-👥 <b>Ваши рефералы:</b> {referral_count}
-💰 <b>Заработано:</b> {referral_count * 500} монет
-
-🔗 <b>Ваша реферальная ссылка:</b>
-https://t.me/lambo_gift_bot?start={chat_id}
-
-💡 <b>За каждого реферала:</b>
-• Вы получаете 500 монет
-• Реферал получает 200 монет"""
-
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🔙 Назад", "callback_data": "main"}]
-                ]
-            }
-            edit_message(chat_id, message_id, text, keyboard)
-            
-    except Exception as e:
-        logger.error(f"Callback handling error: {e}")
-
-@app.route("/webapp")  
-def webapp():
-    html_content = '''<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GiftBot Crash Game</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
-            color: #fff; min-height: 100vh; overflow: hidden;
-        }
-        .container { max-width: 400px; margin: 0 auto; padding: 20px; position: relative; }
-        .game-header { 
-            text-align: center; margin-bottom: 20px; background: rgba(255,255,255,0.1);
-            padding: 20px; border-radius: 20px; backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        .balance { font-size: 20px; font-weight: bold; color: #ffd700; }
-        .nav-tabs {
-            display: flex; background: rgba(255,255,255,0.1); border-radius: 15px;
-            margin-bottom: 20px; padding: 5px;
-        }
-        .nav-tab {
-            flex: 1; padding: 12px; text-align: center; border-radius: 10px;
-            cursor: pointer; transition: all 0.3s ease; font-weight: bold;
-        }
-        .nav-tab.active {
-            background: linear-gradient(45deg, #667eea, #764ba2); color: white;
-        }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .crash-display {
-            position: relative; height: 300px; background: linear-gradient(45deg, #1e3c72, #2a5298);
-            border-radius: 20px; margin-bottom: 20px; overflow: hidden; border: 2px solid #ffd700;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .rocket {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            font-size: 50px; transition: all 0.3s ease;
-            filter: drop-shadow(0 0 10px #ff6b35);
-        }
-        .rocket.flying {
-            animation: rocketFly 0.1s linear infinite;
-        }
-        @keyframes rocketFly {
-            0% { transform: translateX(-50%) rotate(-2deg); }
-            50% { transform: translateX(-50%) rotate(2deg); }
-            100% { transform: translateX(-50%) rotate(-2deg); }
-        }
-        .explosion {
-            display: none; position: absolute; font-size: 80px;
-            animation: explode 0.8s ease forwards;
-        }
-        @keyframes explode {
-            0% { transform: scale(0.2); opacity: 1; }
-            50% { transform: scale(1.5); opacity: 1; }
-            100% { transform: scale(2.5); opacity: 0; }
-        }
-        .multiplier { 
-            font-size: 48px; font-weight: bold; color: #00ff00; 
-            text-shadow: 0 0 20px #00ff00; transition: all 0.1s ease;
-            z-index: 10; position: relative;
-        }
-        .multiplier.crashed { color: #ff0000; text-shadow: 0 0 20px #ff0000; }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        .bet-input { 
-            padding: 15px; background: rgba(255,255,255,0.1); 
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 15px; color: #fff; font-size: 16px; text-align: center;
-        }
-        .btn { 
-            padding: 15px; border: none; border-radius: 15px; font-weight: bold; 
-            font-size: 16px; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase;
-        }
-        .btn-bet { background: linear-gradient(45deg, #00ff00, #32cd32); color: #000; }
-        .btn-cashout { background: linear-gradient(45deg, #ff6b6b, #ff4757); color: #fff; }
-        .btn:disabled { background: rgba(255,255,255,0.3); cursor: not-allowed; }
-        .btn:hover:not(:disabled) { transform: translateY(-2px); }
-        .game-info { 
-            background: rgba(255,255,255,0.1); padding: 15px; 
-            border-radius: 15px; margin-bottom: 20px; 
-        }
-        .trail {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            width: 4px; height: 0; background: linear-gradient(to top, #ff6b35, transparent);
-            transition: height 0.1s ease;
-        }
-        
-        /* Стили для кейсов */
-        .cases-grid {
-            display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;
-            margin-bottom: 20px;
-        }
-        .case-item {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 15px; padding: 20px; text-align: center;
-            cursor: pointer; transition: all 0.3s ease; position: relative;
-            overflow: hidden; border: 2px solid transparent;
-        }
-        .case-item:hover {
-            transform: translateY(-5px); border-color: #ffd700;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        }
-        .case-item.opening {
-            animation: caseShake 0.8s ease-in-out;
-        }
-        @keyframes caseShake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-5px) rotate(-2deg); }
-            75% { transform: translateX(5px) rotate(2deg); }
-        }
-        .case-emoji {
-            font-size: 40px; display: block; margin-bottom: 10px;
-        }
-        .case-name {
-            font-weight: bold; margin-bottom: 5px; font-size: 14px;
-        }
-        .case-price {
-            color: #ffd700; font-weight: bold;
-        }
-        .case-rarity {
-            position: absolute; top: 5px; right: 5px;
-            padding: 2px 8px; border-radius: 10px; font-size: 10px;
-            font-weight: bold; text-transform: uppercase;
-        }
-        .rarity-common { background: #95a5a6; }
-        .rarity-uncommon { background: #2ecc71; }
-        .rarity-rare { background: #3498db; }
-        .rarity-epic { background: #9b59b6; }
-        .rarity-legendary { background: #f39c12; }
-        .rarity-mythic { background: #e74c3c; }
-        
-        .opening-modal {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); display: none; align-items: center;
-            justify-content: center; z-index: 1000;
-        }
-        .opening-animation {
-            text-align: center; animation: openingPulse 2s ease-in-out;
-        }
-        .opening-case {
-            font-size: 100px; animation: caseOpen 2s ease-in-out;
-        }
-        .opening-result {
-            opacity: 0; animation: resultReveal 0.5s ease forwards 2s;
-        }
-        @keyframes caseOpen {
-            0% { transform: scale(1) rotate(0deg); }
-            50% { transform: scale(1.5) rotate(180deg); }
-            100% { transform: scale(1) rotate(360deg); }
-        }
-        @keyframes resultReveal {
-            to { opacity: 1; transform: scale(1.2); }
-        }
-        @keyframes openingPulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-        }
-        
-        .result-item {
-            background: linear-gradient(135deg, #f093fb, #f5576c);
-            border-radius: 20px; padding: 30px; margin: 20px;
-        }
-        .result-emoji { font-size: 80px; margin-bottom: 15px; }
-        .result-name { font-size: 20px; font-weight: bold; margin-bottom: 10px; }
-        .result-rarity { 
-            padding: 5px 15px; border-radius: 15px; display: inline-block;
-            margin-bottom: 15px; text-transform: uppercase; font-weight: bold;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="game-header">
-            <div class="balance">💰 <span id="balance">1000</span> монет</div>
-            <div>🎁 GiftBot Game</div>
-        </div>
-        
-        <div class="nav-tabs">
-            <div class="nav-tab active" onclick="switchTab('crash')">🚀 Crash</div>
-            <div class="nav-tab" onclick="switchTab('cases')">📦 Кейсы</div>
-        </div>
-        
-        <!-- Crash Game Tab -->
-        <div id="crash-tab" class="tab-content active">
-            <div class="crash-display" id="gameArea">
-                <div class="trail" id="trail"></div>
-                <div class="rocket" id="rocket">🚀</div>
-                <div class="explosion" id="explosion">💥</div>
-                <div class="multiplier" id="multiplier">1.00x</div>
-            </div>
-            
-            <div class="controls">
-                <input type="number" class="bet-input" id="betAmount" placeholder="Ставка" min="1" value="10">
-                <button class="btn btn-bet" id="betButton" onclick="placeBet()">Ставка</button>
-                <input type="number" class="bet-input" id="autoCashout" placeholder="Авто-вывод" min="1.01" step="0.01">
-                <button class="btn btn-cashout" id="cashoutButton" onclick="cashOut()" disabled>Вывести</button>
-            </div>
-            
-            <div class="game-info">
-                <div>Статус: <span id="gameStatus">Ожидание...</span></div>
-                <div>Ваша ставка: <span id="currentBet">-</span></div>
-                <div>Потенциальный выигрыш: <span id="potentialWin">-</span></div>
-            </div>
-        </div>
-        
-        <!-- Cases Tab -->
-        <div id="cases-tab" class="tab-content">
-            <div class="cases-grid" id="casesGrid">
-                <!-- Cases will be generated here -->
-            </div>
-            
-            <div class="game-info">
-                <div>💎 Инвентарь: <span id="inventoryCount">0</span> предметов</div>
-                <div>⭐ Общая стоимость: <span id="inventoryValue">0</span> звезд</div>
-                <div>🎁 Открыто кейсов: <span id="casesOpened">0</span></div>
-            </div>
-        </div>
-        
-        <!-- Opening Modal -->
-        <div class="opening-modal" id="openingModal">
-            <div class="opening-animation">
-                <div class="opening-case" id="openingCase">📦</div>
-                <div>Открываем кейс...</div>
-                <div class="opening-result" id="openingResult">
-                    <div class="result-item">
-                        <div class="result-emoji" id="resultEmoji">🎁</div>
-                        <div class="result-name" id="resultName">Подарок</div>
-                        <div class="result-rarity" id="resultRarity">common</div>
-                        <button class="btn" onclick="closeModal()">Забрать</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        if (window.Telegram && window.Telegram.WebApp) {
-            window.Telegram.WebApp.ready();
-            window.Telegram.WebApp.expand();
-        }
-        
-        let gameData = {
-            balance: 1000, currentBet: 0, multiplier: 1.0,
-            isPlaying: false, gameRunning: false, casesOpened: 0, inventory: []
-        };
-        
-        const rocket = document.getElementById("rocket");
-        const explosion = document.getElementById("explosion");
-        const trail = document.getElementById("trail");
-        let rocketSound, crashSound, openSound;
-        
-        // Реальные подарки из Telegram Gifts - обновите цены когда получите точные данные
-        const realTelegramGifts = {
-            // Базовые подарки (1-10 звезд)
-            deliciousCake: {name: "Delicious Cake", emoji: "🎂", stars: 1},
-            greenStar: {name: "Green Star", emoji: "⭐", stars: 2}, 
-            fireworks: {name: "Fireworks", emoji: "🎆", stars: 5},
-            blueStar: {name: "Blue Star", emoji: "💙", stars: 10},
-            
-            // Средние подарки (25-100 звезд)
-            redHeart: {name: "Red Heart", emoji: "❤️", stars: 25},
-            goldenPremium: {name: "Golden Premium", emoji: "👑", stars: 100},
-            
-            // Дорогие подарки (250-1000 звезд)
-            platinumPremium: {name: "Platinum Premium", emoji: "💎", stars: 250},
-            limitedGift: {name: "Limited Gift", emoji: "🔮", stars: 500},
-            exclusiveGift: {name: "Exclusive Gift", emoji: "✨", stars: 1000},
-            
-            // Очень редкие (2500+ звезд)
-            legendaryStar: {name: "Legendary Star", emoji: "🌟", stars: 2500},
-            ultimateGift: {name: "Ultimate Gift", emoji: "🎭", stars: 5000},
-            ghost: {name: "Ghost", emoji: "👻", stars: 10000},
-            
-            // Ультра редкие (25000+ звезд) 
-            blueGem: {name: "Blue Gem", emoji: "💠", stars: 25000},
-            ninja: {name: "Ninja", emoji: "🥷", stars: 50000}
-        };
-        
-        // Кейсы с настоящими подарками Telegram
-        const cases = {
-            basicGifts: {
-                name: "Базовые Подарки", emoji: "🎁", price: 100,
-                items: [
-                    {...realTelegramGifts.deliciousCake, chance: 35},
-                    {...realTelegramGifts.greenStar, chance: 30},
-                    {...realTelegramGifts.fireworks, chance: 20},
-                    {...realTelegramGifts.blueStar, chance: 12},
-                    {...realTelegramGifts.redHeart, chance: 3}
-                ]
-            },
-            premiumGifts: {
-                name: "Премиум Подарки", emoji: "💎", price: 250,
-                items: [
-                    {...realTelegramGifts.fireworks, chance: 25},
-                    {...realTelegramGifts.blueStar, chance: 20},
-                    {...realTelegramGifts.redHeart, chance: 18},
-                    {...realTelegramGifts.goldenPremium, chance: 15},
-                    {...realTelegramGifts.platinumPremium, chance: 8},
-                    {...realTelegramGifts.limitedGift, chance: 4}
-                ]
-            },
-            eliteGifts: {
-                name: "Элитные Подарки", emoji: "🏆", price: 500,
-                items: [
-                    {...realTelegramGifts.redHeart, chance: 20},
-                    {...realTelegramGifts.goldenPremium, chance: 18},
-                    {...realTelegramGifts.platinumPremium, chance: 15},
-                    {...realTelegramGifts.limitedGift, chance: 12},
-                    {...realTelegramGifts.exclusiveGift, chance: 8},
-                    {...realTelegramGifts.legendaryStar, chance: 4},
-                    {...realTelegramGifts.ultimateGift, chance: 2},
-                    {...realTelegramGifts.ghost, chance: 1}
-                ]
-            },
-            ultimateGifts: {
-                name: "Ультимативные Подарки", emoji: "👹", price: 1000,
-                items: [
-                    {...realTelegramGifts.platinumPremium, chance: 15},
-                    {...realTelegramGifts.limitedGift, chance: 12},
-                    {...realTelegramGifts.exclusiveGift, chance: 10},
-                    {...realTelegramGifts.legendaryStar, chance: 8},
-                    {...realTelegramGifts.ultimateGift, chance: 6},
-                    {...realTelegramGifts.ghost, chance: 4},
-                    {...realTelegramGifts.blueGem, chance: 2},
-                    {...realTelegramGifts.ninja, chance: 1}
-                ]
-            }
-        };
-        
-        function switchTab(tab) {
-            document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
-            document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
-            
-            document.querySelector(`[onclick="switchTab('${tab}')"]`).classList.add("active");
-            document.getElementById(tab + "-tab").classList.add("active");
-            
-            if (tab === "cases") {
-                generateCases();
-            }
-        }
-        
-        function generateCases() {
-            const grid = document.getElementById("casesGrid");
-            grid.innerHTML = "";
-            
-            Object.keys(cases).forEach(caseId => {
-                const caseData = cases[caseId];
-                const caseElement = document.createElement("div");
-                caseElement.className = "case-item";
-                caseElement.onclick = () => openCase(caseId);
-                
-                const rarity = getRarityFromPrice(caseData.price);
-                
-                caseElement.innerHTML = `
-                    <div class="case-rarity rarity-${rarity}">${rarity}</div>
-                    <div class="case-emoji">${caseData.emoji}</div>
-                    <div class="case-name">${caseData.name}</div>
-                    <div class="case-price">${caseData.price} монет</div>
-                    <div style="font-size: 12px; color: #ccc; margin-top: 5px;">
-                        ${caseData.items.length} подарков внутри
-                    </div>
-                `;
-                
-                grid.appendChild(caseElement);
-            });
-        }
-        
-        function getRarityFromPrice(price) {
-            if (price <= 150) return "common";
-            if (price <= 300) return "uncommon"; 
-            if (price <= 600) return "rare";
-            if (price <= 900) return "epic";
-            return "legendary";
-        }
-        
-        function getRarityFromStars(stars) {
-            if (stars <= 5) return "common";
-            if (stars <= 25) return "uncommon";
-            if (stars <= 100) return "rare";
-            if (stars <= 500) return "epic";
-            if (stars <= 2500) return "legendary";
-            return "mythic";
-        }
-        
-        function openCase(caseId) {
-            const caseData = cases[caseId];
-            
-            if (gameData.balance < caseData.price) {
-                alert("Недостаточно монет!");
-                return;
-            }
-            
-            gameData.balance -= caseData.price;
-            updateDisplay();
-            
-            const caseElement = event.target.closest(".case-item");
-            caseElement.classList.add("opening");
-            
-            // Звук открытия кейса
-            playOpenSound();
-            
-            setTimeout(() => {
-                const result = getRandomItem(caseData.items);
-                gameData.inventory.push(result);
-                gameData.casesOpened++;
-                
-                showOpeningModal(caseData.emoji, result);
-                caseElement.classList.remove("opening");
-            }, 1000);
-        }
-        
-        function getRandomItem(items) {
-            const totalChance = items.reduce((sum, item) => sum + item.chance, 0);
-            const random = Math.random() * totalChance;
-            
-            let currentChance = 0;
-            for (const item of items) {
-                currentChance += item.chance;
-                if (random <= currentChance) {
-                    return item;
-                }
-            }
-            return items[0];
-        }
-        
-        function showOpeningModal(caseEmoji, result) {
-            const modal = document.getElementById("openingModal");
-            const openingCase = document.getElementById("openingCase");
-            const resultEmoji = document.getElementById("resultEmoji");
-            const resultName = document.getElementById("resultName");
-            const resultRarity = document.getElementById("resultRarity");
-            
-            openingCase.textContent = caseEmoji;
-            resultEmoji.textContent = result.emoji;
-            resultName.textContent = result.name;
-            
-            // Создаем элемент для отображения стоимости в звездах
-            const starsDisplay = document.createElement("div");
-            starsDisplay.style.cssText = "font-size: 16px; color: #ffd700; margin: 10px 0; font-weight: bold;";
-            starsDisplay.textContent = `⭐ ${result.stars} звезд`;
-            
-            // Определяем редкость по звездам и устанавливаем цвет
-            const actualRarity = getRarityFromStars(result.stars);
-            resultRarity.textContent = actualRarity.toUpperCase();
-            resultRarity.className = `result-rarity rarity-${actualRarity}`;
-            
-            // Добавляем стоимость в звездах перед кнопкой
-            const resultItem = document.querySelector(".result-item");
-            const existingStars = resultItem.querySelector(".stars-display");
-            if (existingStars) {
-                existingStars.remove();
-            }
-            
-            starsDisplay.className = "stars-display";
-            resultItem.insertBefore(starsDisplay, resultItem.lastElementChild);
-            
-            modal.style.display = "flex";
-            
-            // Звук получения предмета базируется на реальной редкости
-            setTimeout(() => {
-                playRewardSound(actualRarity);
-            }, 2000);
-        }
-        
-        function closeModal() {
-            document.getElementById("openingModal").style.display = "none";
-            document.getElementById("inventoryCount").textContent = gameData.inventory.length;
-            document.getElementById("casesOpened").textContent = gameData.casesOpened;
-            
-            // Подсчитываем общую стоимость инвентаря в звездах
-            const totalStars = gameData.inventory.reduce((sum, item) => sum + item.stars, 0);
-            const inventoryValue = document.getElementById("inventoryValue");
-            if (inventoryValue) {
-                inventoryValue.textContent = totalStars;
-            }
-        }
-        
-        function playOpenSound() {
-            if (!openSound) {
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                openSound = {
-                    context: audioContext,
-                    play: function() {
-                        const oscillator = this.context.createOscillator();
-                        const gainNode = this.context.createGain();
-                        
-                        oscillator.connect(gainNode);
-                        gainNode.connect(this.context.destination);
-                        
-                        oscillator.type = "sine";
-                        oscillator.frequency.setValueAtTime(600, this.context.currentTime);
-                        oscillator.frequency.exponentialRampToValueAtTime(800, this.context.currentTime + 0.3);
-                        
-                        gainNode.gain.setValueAtTime(0.2, this.context.currentTime);
-                        gainNode.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.3);
-                        
-                        oscillator.start();
-                        oscillator.stop(this.context.currentTime + 0.3);
-                    }
-                };
-            }
-            openSound.play();
-        }
-        
-        function playRewardSound(rarity) {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            let frequencies = [440, 550, 660]; // default
-            
-            switch(rarity) {
-                case "uncommon": frequencies = [523, 659, 784]; break;
-                case "rare": frequencies = [659, 784, 988]; break;
-                case "epic": frequencies = [784, 988, 1175]; break;
-                case "legendary": frequencies = [988, 1175, 1397]; break;
-                case "mythic": frequencies = [1175, 1397, 1661]; break;
-            }
-            
-            frequencies.forEach((freq, i) => {
-                setTimeout(() => {
-                    const oscillator = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
-                    
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-                    
-                    oscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
-                    gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-                    
-                    oscillator.start();
-                    oscillator.stop(audioContext.currentTime + 0.4);
-                }, i * 100);
-            });
-        }
-        
-        // Создаем звуковые эффекты
-        function createSounds() {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // Звук ракеты - реалистичный рев двигателя с шумом
-            rocketSound = {
-                context: audioContext,
-                noiseSource: null,
-                lowOsc: null,
-                midOsc: null,
-                gainNode: null,
-                noiseGain: null,
-                filterNode: null,
-                start: function() {
-                    // Создаем белый шум для основы звука ракеты
-                    const bufferSize = this.context.sampleRate * 2;
-                    const buffer = this.context.createBuffer(1, bufferSize, this.context.sampleRate);
-                    const output = buffer.getChannelData(0);
-                    
-                    // Генерируем шум с неравномерным распределением
-                    for (let i = 0; i < bufferSize; i++) {
-                        output[i] = (Math.random() * 2 - 1) * (0.3 + Math.sin(i * 0.01) * 0.2);
-                    }
-                    
-                    this.noiseSource = this.context.createBufferSource();
-                    this.noiseSource.buffer = buffer;
-                    this.noiseSource.loop = true;
-                    
-                    // Низкочастотный компонент (рев двигателя)
-                    this.lowOsc = this.context.createOscillator();
-                    this.lowOsc.type = "sawtooth";
-                    
-                    // Среднечастотный компонент (горение топлива)
-                    this.midOsc = this.context.createOscillator();
-                    this.midOsc.type = "triangle";
-                    
-                    // Фильтры и усилители
-                    this.filterNode = this.context.createBiquadFilter();
-                    this.filterNode.type = "bandpass";
-                    this.filterNode.frequency.setValueAtTime(300, this.context.currentTime);
-                    this.filterNode.Q.setValueAtTime(2, this.context.currentTime);
-                    
-                    this.gainNode = this.context.createGain();
-                    this.noiseGain = this.context.createGain();
-                    
-                    // Соединяем цепь
-                    this.noiseSource.connect(this.filterNode);
-                    this.filterNode.connect(this.noiseGain);
-                    this.lowOsc.connect(this.gainNode);
-                    this.midOsc.connect(this.gainNode);
-                    this.noiseGain.connect(this.context.destination);
-                    this.gainNode.connect(this.context.destination);
-                    
-                    // Устанавливаем начальные параметры
-                    this.lowOsc.frequency.setValueAtTime(50, this.context.currentTime);
-                    this.midOsc.frequency.setValueAtTime(150, this.context.currentTime);
-                    this.gainNode.gain.setValueAtTime(0.08, this.context.currentTime);
-                    this.noiseGain.gain.setValueAtTime(0.12, this.context.currentTime);
-                    
-                    // Запускаем все источники
-                    this.noiseSource.start();
-                    this.lowOsc.start();
-                    this.midOsc.start();
-                },
-                stop: function() {
-                    if (this.noiseSource && this.lowOsc && this.midOsc) {
-                        this.gainNode.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.3);
-                        this.noiseGain.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + 0.3);
-                        
-                        this.noiseSource.stop(this.context.currentTime + 0.3);
-                        this.lowOsc.stop(this.context.currentTime + 0.3);
-                        this.midOsc.stop(this.context.currentTime + 0.3);
-                        
-                        this.noiseSource = null;
-                        this.lowOsc = null;
-                        this.midOsc = null;
-                    }
-                },
-                updatePitch: function(multiplier) {
-                    if (this.lowOsc && this.midOsc && this.filterNode) {
-                        // Увеличиваем частоты и интенсивность с ростом множителя
-                        const lowFreq = 50 + (multiplier * 15);
-                        const midFreq = 150 + (multiplier * 30);
-                        const filterFreq = 300 + (multiplier * 80);
-                        const intensity = 0.08 + (multiplier * 0.02);
-                        const noiseIntensity = 0.12 + (multiplier * 0.03);
-                        
-                        this.lowOsc.frequency.setValueAtTime(lowFreq, this.context.currentTime);
-                        this.midOsc.frequency.setValueAtTime(midFreq, this.context.currentTime);
-                        this.filterNode.frequency.setValueAtTime(filterFreq, this.context.currentTime);
-                        this.gainNode.gain.setValueAtTime(intensity, this.context.currentTime);
-                        this.noiseGain.gain.setValueAtTime(noiseIntensity, this.context.currentTime);
-                    }
-                }
-            };
-            
-            // Звук взрыва - комбинация шума и низких частот
-            crashSound = {
-                context: audioContext,
-                play: function() {
-                    // Белый шум для взрыва
-                    const bufferSize = this.context.sampleRate * 0.8;
-                    const buffer = this.context.createBuffer(1, bufferSize, this.context.sampleRate);
-                    const output = buffer.getChannelData(0);
-                    
-                    // Генерируем белый шум
-                    for (let i = 0; i < bufferSize; i++) {
-                        output[i] = Math.random() * 2 - 1;
-                    }
-                    
-                    const noiseSource = this.context.createBufferSource();
-                    const noiseGain = this.context.createGain();
-                    const noiseFilter = this.context.createBiquadFilter();
-                    
-                    noiseSource.buffer = buffer;
-                    noiseFilter.type = "lowpass";
-                    noiseFilter.frequency.setValueAtTime(800, this.context.currentTime);
-                    
-                    noiseSource.connect(noiseFilter);
-                    noiseFilter.connect(noiseGain);
-                    noiseGain.connect(this.context.destination);
-                    
-                    noiseGain.gain.setValueAtTime(0.4, this.context.currentTime);
-                    noiseGain.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.8);
-                    noiseFilter.frequency.exponentialRampToValueAtTime(50, this.context.currentTime + 0.5);
-                    
-                    // Добавляем низкочастотный удар
-                    const bassOsc = this.context.createOscillator();
-                    const bassGain = this.context.createGain();
-                    
-                    bassOsc.type = "sine";
-                    bassOsc.frequency.setValueAtTime(40, this.context.currentTime);
-                    bassOsc.frequency.exponentialRampToValueAtTime(10, this.context.currentTime + 0.3);
-                    
-                    bassOsc.connect(bassGain);
-                    bassGain.connect(this.context.destination);
-                    
-                    bassGain.gain.setValueAtTime(0.6, this.context.currentTime);
-                    bassGain.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + 0.4);
-                    
-                    noiseSource.start();
-                    noiseSource.stop(this.context.currentTime + 0.8);
-                    
-                    bassOsc.start();
-                    bassOsc.stop(this.context.currentTime + 0.4);
-                }
-            };
-        }
-        
-        function updateDisplay() {
-            document.getElementById("balance").textContent = gameData.balance;
-            document.getElementById("multiplier").textContent = gameData.multiplier.toFixed(2) + "x";
-            document.getElementById("currentBet").textContent = gameData.currentBet || "-";
-            
-            if (gameData.currentBet) {
-                const potential = Math.floor(gameData.currentBet * gameData.multiplier);
-                document.getElementById("potentialWin").textContent = potential + " монет";
-            }
-        }
-        
-        function updateRocketPosition(multiplier) {
-            const maxHeight = 250;
-            const height = Math.min((multiplier - 1) * 80, maxHeight);
-            
-            rocket.style.bottom = (20 + height) + "px";
-            trail.style.height = height + "px";
-            
-            // Обновляем звук ракеты
-            if (rocketSound && rocketSound.oscillator) {
-                rocketSound.updatePitch(multiplier);
-            }
-        }
-        
-        function placeBet() {
-            const betAmount = parseInt(document.getElementById("betAmount").value);
-            
-            if (!betAmount || betAmount < 1 || gameData.balance < betAmount || gameData.gameRunning) {
-                return;
-            }
-            
-            gameData.balance -= betAmount;
-            gameData.currentBet = betAmount;
-            gameData.isPlaying = true;
-            
-            document.getElementById("betButton").disabled = true;
-            document.getElementById("cashoutButton").disabled = false;
-            document.getElementById("gameStatus").textContent = "Ставка принята";
-            
-            updateDisplay();
-        }
-        
-        function cashOut() {
-            if (!gameData.isPlaying || !gameData.gameRunning) return;
-            
-            const winAmount = Math.floor(gameData.currentBet * gameData.multiplier);
-            gameData.balance += winAmount;
-            gameData.isPlaying = false;
-            
-            document.getElementById("cashoutButton").disabled = true;
-            document.getElementById("gameStatus").textContent = "Выведено: " + winAmount + " монет";
-            
-            updateDisplay();
-        }
-        
-        function simulateGame() {
-            gameData.multiplier = 1.0;
-            gameData.gameRunning = false;
-            
-            // Сброс позиции ракеты
-            rocket.style.bottom = "20px";
-            rocket.classList.remove("flying");
-            trail.style.height = "0px";
-            rocket.style.display = "block";
-            explosion.style.display = "none";
-            
-            document.getElementById("betButton").disabled = false;
-            document.getElementById("cashoutButton").disabled = true;
-            document.getElementById("gameStatus").textContent = "Прием ставок...";
-            
-            setTimeout(function() {
-                gameData.gameRunning = true;
-                document.getElementById("betButton").disabled = true;
-                document.getElementById("gameStatus").textContent = "Игра началась!";
-                
-                // Запуск звука ракеты
-                if (!rocketSound) createSounds();
-                rocketSound.start();
-                rocket.classList.add("flying");
-                
-                const crashPoint = Math.random() * 3 + 1.01;
-                
-                const gameInterval = setInterval(function() {
-                    gameData.multiplier += 0.01 + (gameData.multiplier * 0.001);
-                    updateRocketPosition(gameData.multiplier);
-                    
-                    if (gameData.multiplier >= crashPoint) {
-                        crash();
-                        clearInterval(gameInterval);
-                    }
-                    
-                    updateDisplay();
-                }, 100);
-                
-            }, 5000);
-        }
-        
-        function crash() {
-            gameData.gameRunning = false;
-            
-            // Остановка звука ракеты и запуск звука взрыва
-            if (rocketSound) rocketSound.stop();
-            if (crashSound) crashSound.play();
-            
-            rocket.classList.remove("flying");
-            rocket.style.display = "none";
-            explosion.style.display = "block";
-            explosion.style.bottom = rocket.style.bottom;
-            explosion.style.left = "50%";
-            explosion.style.transform = "translateX(-50%)";
-            
-            const multiplierElement = document.getElementById("multiplier");
-            multiplierElement.classList.add("crashed");
-            multiplierElement.textContent = "КРАШ!";
-            
-            if (gameData.isPlaying) {
-                gameData.isPlaying = false;
-                document.getElementById("gameStatus").textContent = "Краш - проигрыш!";
-            }
-            
-            setTimeout(function() {
-                multiplierElement.classList.remove("crashed");
-                gameData.currentBet = 0;
-                gameData.isPlaying = false;
-                updateDisplay();
-                simulateGame();
-            }, 3000);
-        }
-        
-        updateDisplay();
-        simulateGame();
-    </script>
-</body>
-</html>'''
-    return html_content
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    try:
-        data = request.get_json()
-        
-        if "message" in data:
-            message = data["message"]
-            chat_id = message["chat"]["id"]
-            user_name = message["from"].get("first_name", "Пользователь")
-            text = message.get("text", "")
-            
-            if text.startswith("/start"):
-                referrer_id = None
-                if " " in text:
-                    try:
-                        referrer_id = int(text.split()[1])
-                    except:
-                        pass
-                handle_start(chat_id, user_name, referrer_id)
-        
-        elif "callback_query" in data:
-            callback = data["callback_query"]
-            chat_id = callback["message"]["chat"]["id"]
-            message_id = callback["message"]["message_id"]
-            callback_data = callback["data"]
-            user_name = callback["from"].get("first_name", "Пользователь")
-            
-            answer_callback(callback["id"])
-            
-            handle_webhook_callback(chat_id, message_id, callback_data, user_name)
-        
-        return "OK"
-    
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return "ERROR", 500
-
-def setup_webhook():
-    try:
-        webhook_url = f"{WEBHOOK_URL}/webhook"
-        response = requests.post(f"{API_URL}/setWebhook", data={"url": webhook_url})
-        result = response.json()
-        
-        if result.get("ok"):
-            logger.info(f"Webhook установлен успешно: {webhook_url}")
-            return True
-        else:
-            logger.error(f"Ошибка установки webhook: {result}")
-            return False
-    except Exception as e:
-        logger.error(f"Failed to setup webhook: {e}")
-        return False
-
-if __name__ == "__main__":
-    setup_webhook()
-    port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+{case['emoji']} <b>{
