@@ -548,9 +548,104 @@ def home():
     <p>Telegram bot в стиле GiftUp</p>
     """
 
+def handle_webhook_callback(chat_id, message_id, callback_data, user_name):
+    try:
+        if callback_data == "main":
+            user_data = get_user_data(chat_id)
+            text = f"""🎁 <b>GiftBot - {user_name}</b>
+
+💰 <b>Баланс:</b> {user_data['balance']} монет
+🎯 <b>Уровень:</b> {user_data['level']} ({user_data['experience']} XP)
+
+Выберите действие:"""
+            edit_message(chat_id, message_id, text, main_menu_keyboard())
+            
+        elif callback_data == "play_crash":
+            handle_crash_game(chat_id, message_id)
+            
+        elif callback_data.startswith("bet_"):
+            amount = int(callback_data.split("_")[1])
+            handle_bet(chat_id, message_id, amount)
+            
+        elif callback_data == "cashout":
+            handle_cashout(chat_id, "")
+            handle_crash_game(chat_id, message_id)
+            
+        elif callback_data == "gift_shop":
+            handle_gift_shop(chat_id, message_id)
+            
+        elif callback_data.startswith("rarity_"):
+            rarity = callback_data.replace("rarity_", "")
+            handle_rarity_selection(chat_id, message_id, rarity)
+            
+        elif callback_data.startswith("buy_"):
+            gift_id = callback_data.replace("buy_", "")
+            handle_buy_gift(chat_id, message_id, gift_id)
+            
+        elif callback_data == "daily_bonus":
+            handle_daily_bonus(chat_id, message_id)
+            
+        elif callback_data in ["balance", "stats"]:
+            user_data = get_user_data(chat_id)
+            win_rate = (user_data['games_won'] / max(user_data['games_played'], 1)) * 100
+            
+            text = f"""📊 <b>Статистика - {user_name}</b>
+
+💰 <b>Баланс:</b> {user_data['balance']} монет
+🎯 <b>Уровень:</b> {user_data['level']} (XP: {user_data['experience']})
+
+🎮 <b>Игровая статистика:</b>
+• Игр сыграно: {user_data['games_played']}
+• Побед: {user_data['games_won']}
+• Поражений: {user_data['games_lost']}
+• Винрейт: {win_rate:.1f}%
+
+💸 <b>Финансы:</b>
+• Поставлено: {user_data['total_bet']} монет
+• Выиграно: {user_data['total_won']} монет
+• Потеряно: {user_data['total_lost']} монет
+
+🎁 <b>Подарки:</b>
+• Отправлено: {user_data['gifts_sent']}
+• Потрачено: {user_data['total_spent']} монет"""
+
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🚀 Играть", "callback_data": "play_crash"}],
+                    [{"text": "🔙 Назад", "callback_data": "main"}]
+                ]
+            }
+            edit_message(chat_id, message_id, text, keyboard)
+            
+        elif callback_data == "referrals":
+            user_data = get_user_data(chat_id)
+            referral_count = len(user_data.get('referrals', []))
+            
+            text = f"""👥 <b>Реферальная система</b>
+
+👥 <b>Ваши рефералы:</b> {referral_count}
+💰 <b>Заработано:</b> {referral_count * 500} монет
+
+🔗 <b>Ваша реферальная ссылка:</b>
+https://t.me/lambo_gift_bot?start={chat_id}
+
+💡 <b>За каждого реферала:</b>
+• Вы получаете 500 монет
+• Реферал получает 200 монет"""
+
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🔙 Назад", "callback_data": "main"}]
+                ]
+            }
+            edit_message(chat_id, message_id, text, keyboard)
+            
+    except Exception as e:
+        logger.error(f"Callback handling error: {e}")
+
 @app.route("/webapp")  
 def webapp():
-    return """<!DOCTYPE html>
+    html_content = '''<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -560,7 +655,7 @@ def webapp():
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
             color: #fff; min-height: 100vh; overflow: hidden;
         }
@@ -581,22 +676,7 @@ def webapp():
             text-shadow: 0 0 20px #00ff00; transition: all 0.1s ease;
         }
         .multiplier.crashed { color: #ff0000; text-shadow: 0 0 20px #ff0000; }
-        .rocket { 
-            position: absolute; bottom: 10px; font-size: 40px; 
-            transition: transform 0.2s linear;
-        }
-        .explosion { 
-            display: none; position: absolute; font-size: 60px; 
-            animation: explode 0.6s ease forwards;
-        }
-        @keyframes explode { 
-            0% { transform: scale(0.5); opacity: 1; } 
-            50% { transform: scale(2); opacity: 1; } 
-            100% { transform: scale(3); opacity: 0; } 
-        }
-        .controls { 
-            display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; 
-        }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
         .bet-input { 
             padding: 15px; background: rgba(255,255,255,0.1); 
             border: 1px solid rgba(255,255,255,0.3);
@@ -623,8 +703,6 @@ def webapp():
         </div>
         
         <div class="crash-display">
-            <div class="rocket" id="rocket">🚀</div>
-            <div class="explosion" id="explosion">💥</div>
             <div class="multiplier" id="multiplier">1.00x</div>
         </div>
         
@@ -643,18 +721,169 @@ def webapp():
     </div>
     
     <script>
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+        }
         
         let gameData = {
             balance: 1000, currentBet: 0, multiplier: 1.0,
             isPlaying: false, gameRunning: false
         };
         
-        const rocket = document.getElementById('rocket');
-        const explosion = document.getElementById('explosion');
-        
         function updateDisplay() {
-            document.getElementById('balance').textContent = gameData.balance;
-            document.getElementById('multiplier').textContent = gameData.multiplier.toFixed(2) + 'x';
-            document.getElementById('currentBet').textContent = gameData.currentBet ||
+            document.getElementById("balance").textContent = gameData.balance;
+            document.getElementById("multiplier").textContent = gameData.multiplier.toFixed(2) + "x";
+            document.getElementById("currentBet").textContent = gameData.currentBet || "-";
+            
+            if (gameData.currentBet) {
+                const potential = Math.floor(gameData.currentBet * gameData.multiplier);
+                document.getElementById("potentialWin").textContent = potential + " монет";
+            }
+        }
+        
+        function placeBet() {
+            const betAmount = parseInt(document.getElementById("betAmount").value);
+            
+            if (!betAmount || betAmount < 1 || gameData.balance < betAmount || gameData.gameRunning) {
+                return;
+            }
+            
+            gameData.balance -= betAmount;
+            gameData.currentBet = betAmount;
+            gameData.isPlaying = true;
+            
+            document.getElementById("betButton").disabled = true;
+            document.getElementById("cashoutButton").disabled = false;
+            document.getElementById("gameStatus").textContent = "Ставка принята";
+            
+            updateDisplay();
+        }
+        
+        function cashOut() {
+            if (!gameData.isPlaying || !gameData.gameRunning) return;
+            
+            const winAmount = Math.floor(gameData.currentBet * gameData.multiplier);
+            gameData.balance += winAmount;
+            gameData.isPlaying = false;
+            
+            document.getElementById("cashoutButton").disabled = true;
+            document.getElementById("gameStatus").textContent = "Выведено: " + winAmount + " монет";
+            
+            updateDisplay();
+        }
+        
+        function simulateGame() {
+            gameData.multiplier = 1.0;
+            gameData.gameRunning = false;
+            
+            document.getElementById("betButton").disabled = false;
+            document.getElementById("cashoutButton").disabled = true;
+            document.getElementById("gameStatus").textContent = "Прием ставок...";
+            
+            setTimeout(function() {
+                gameData.gameRunning = true;
+                document.getElementById("betButton").disabled = true;
+                document.getElementById("gameStatus").textContent = "Игра началась!";
+                
+                const crashPoint = Math.random() * 3 + 1.01;
+                
+                const gameInterval = setInterval(function() {
+                    gameData.multiplier += 0.01 + (gameData.multiplier * 0.001);
+                    
+                    if (gameData.multiplier >= crashPoint) {
+                        crash();
+                        clearInterval(gameInterval);
+                    }
+                    
+                    updateDisplay();
+                }, 100);
+                
+            }, 5000);
+        }
+        
+        function crash() {
+            gameData.gameRunning = false;
+            
+            const multiplierElement = document.getElementById("multiplier");
+            multiplierElement.classList.add("crashed");
+            multiplierElement.textContent = "КРАШ!";
+            
+            if (gameData.isPlaying) {
+                gameData.isPlaying = false;
+                document.getElementById("gameStatus").textContent = "Краш - проигрыш!";
+            }
+            
+            setTimeout(function() {
+                multiplierElement.classList.remove("crashed");
+                gameData.currentBet = 0;
+                gameData.isPlaying = false;
+                updateDisplay();
+                simulateGame();
+            }, 3000);
+        }
+        
+        updateDisplay();
+        simulateGame();
+    </script>
+</body>
+</html>'''
+    return html_content
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    try:
+        data = request.get_json()
+        
+        if "message" in data:
+            message = data["message"]
+            chat_id = message["chat"]["id"]
+            user_name = message["from"].get("first_name", "Пользователь")
+            text = message.get("text", "")
+            
+            if text.startswith("/start"):
+                referrer_id = None
+                if " " in text:
+                    try:
+                        referrer_id = int(text.split()[1])
+                    except:
+                        pass
+                handle_start(chat_id, user_name, referrer_id)
+        
+        elif "callback_query" in data:
+            callback = data["callback_query"]
+            chat_id = callback["message"]["chat"]["id"]
+            message_id = callback["message"]["message_id"]
+            callback_data = callback["data"]
+            user_name = callback["from"].get("first_name", "Пользователь")
+            
+            answer_callback(callback["id"])
+            
+            handle_webhook_callback(chat_id, message_id, callback_data, user_name)
+        
+        return "OK"
+    
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return "ERROR", 500
+
+def setup_webhook():
+    try:
+        webhook_url = f"{WEBHOOK_URL}/webhook"
+        response = requests.post(f"{API_URL}/setWebhook", data={"url": webhook_url})
+        result = response.json()
+        
+        if result.get("ok"):
+            logger.info(f"Webhook установлен успешно: {webhook_url}")
+            return True
+        else:
+            logger.error(f"Ошибка установки webhook: {result}")
+            return False
+    except Exception as e:
+        logger.error(f"Failed to setup webhook: {e}")
+        return False
+
+if __name__ == "__main__":
+    setup_webhook()
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port, debug=False)
