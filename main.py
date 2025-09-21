@@ -454,7 +454,6 @@
                     width: 4px; height: 0; background: linear-gradient(to top, #ff6b35, transparent);
                     transition: height 0.1s ease;
                 }
-                
                 .cases-grid {
                     display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;
                     margin-bottom: 20px;
