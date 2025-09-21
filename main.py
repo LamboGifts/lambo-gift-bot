@@ -455,7 +455,6 @@
                     transition: height 0.1s ease;
                 }
                 
-                /* Стили для кейсов */
                 .cases-grid {
                     display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;
                     margin-bottom: 20px;
