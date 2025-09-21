@@ -401,53 +401,6 @@
                 }, 3000);
             }
             
-            // Дополнительные стили будут добавлены через CSS
-            const additionalStyles = document.createElement("style");
-            additionalStyles.textContent = `
-                .rocket {
-                    position: absolute;
-                    bottom: 20px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    font-size: 50px;
-                    transition: all 0.3s ease;
-                    filter: drop-shadow(0 0 10px #ff6b35);
-                }
-                .rocket.flying {
-                    animation: rocketFly 0.1s linear infinite;
-                }
-                .explosion {
-                    display: none;
-                    position: absolute;
-                    font-size: 80px;
-                    animation: explode 0.8s ease forwards;
-                }
-                .multiplier { 
-                    font-size: 48px;
-                    font-weight: bold;
-                    color: #00ff00;
-                    text-shadow: 0 0 20px #00ff00;
-                    transition: all 0.1s ease;
-                    z-index: 10;
-                    position: relative;
-                }
-                .multiplier.crashed {
-                    color: #ff0000;
-                    text-shadow: 0 0 20px #ff0000;
-                }
-                .trail {
-                    position: absolute;
-                    bottom: 20px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    width: 4px;
-                    height: 0;
-                    background: linear-gradient(to top, #ff6b35, transparent);
-                    transition: height 0.1s ease;
-                }
-            `;
-            document.head.appendChild(additionalStyles);
-            
             updateDisplay();
             simulateGame();
         </script>
