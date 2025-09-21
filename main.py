@@ -499,7 +499,7 @@ def home():
 
 @app.route("/webapp")
 def webapp():
-    html_content = '''
+    html_content = """
 <!DOCTYPE html>
 <html lang="ru">
 <head>
