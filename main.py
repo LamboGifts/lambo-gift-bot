@@ -387,7 +387,7 @@ def main_menu_keyboard():
             [{"text": "🎁 Магазин подарков", "callback_data": "gift_shop"}],
             [{"text": "💰 Баланс", "callback_data": "balance"}, {"text": "📊 Статистика", "callback_data": "stats"}],
             [{"text": "🎁 Ежедневный бонус", "callback_data": "daily_bonus"}],
-            [{"text": "🏆 Достижения", "callback_data": "achievements"}, {"text": "👥 Рефералы", "callback_data": "referrals"}],
+            [{"text": "🏆 Достижения", "callback_data": "achievements"}, {"text": "💥 Рефералы", "callback_data": "referrals"}],
             [{"text": "🎮 WebApp", "web_app": {"url": f"{WEBHOOK_URL}/webapp"}}]
         ]
     }
@@ -499,8 +499,7 @@ def home():
 
 @app.route("/webapp")
 def webapp():
-    html_content = """
-<!DOCTYPE html>
+    html_content = '''<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -577,7 +576,3 @@ def webapp():
         </div>
         
         <div class="game-area">
-            <h3>🎁 Магазин подарков</h3>
-            <p>Открывайте кейсы и получайте редкие подарки!</p>
-            <button class="button" onclick="openCase()">Открыть кейс (50 монет)</button>
-        </div>
