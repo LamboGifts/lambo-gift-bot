@@ -1,4 +1,5 @@
-import os
+<p style="opacity: 0.8; margin-bottom: 30px;">
+                    ${gift.collectible ? '🏆 Коллекционный подарок (может стать NFT)' : 'import os
 import requests
 import json
 import random
@@ -7,6 +8,7 @@ import threading
 from flask import Flask, request, jsonify, render_template_string
 import logging
 from datetime import datetime, timedelta
+import uuid
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -23,654 +25,1245 @@ API_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 app = Flask(__name__)
 
-# Глобальные переменные для игры
+# Глобальные переменные
 users = {}
-current_crash_game = None
-game_lock = threading.Lock()
+active_gifts = {}
+gift_history = []
+leaderboard_cache = {"data": [], "last_update": 0}
 
-# Обновленная система подарков на основе реальных Telegram Gifts
-REAL_TELEGRAM_GIFTS = {
-    # Hanging Star (самые дорогие)
-    "hanging_star_1649": {"name": "💫 Hanging Star", "stars": 1649, "emoji": "💫", "rarity": "mythic"},
-    "hanging_star_1554": {"name": "💫 Hanging Star", "stars": 1554, "emoji": "💫", "rarity": "mythic"},
-    "hanging_star_1545": {"name": "💫 Hanging Star", "stars": 1545, "emoji": "💫", "rarity": "legendary"},
-    "hanging_star_1500": {"name": "💫 Hanging Star", "stars": 1500, "emoji": "💫", "rarity": "legendary"},
-    "hanging_star_1499": {"name": "💫 Hanging Star", "stars": 1499, "emoji": "💫", "rarity": "legendary"},
-    "hanging_star_1443": {"name": "💫 Hanging Star", "stars": 1443, "emoji": "💫", "rarity": "legendary"},
-    "hanging_star_1422": {"name": "💫 Hanging Star", "stars": 1422, "emoji": "💫", "rarity": "epic"},
+# Официальные подарки Telegram с реальными ценами в звездах
+TELEGRAM_GIFTS = {
+    # Premium/Ultra Rare - Самые дорогие и редкие
+    "delicious_cake": {"name": "🎂 Delicious Cake", "stars": 2500, "emoji": "🎂", "rarity": "ultra_rare", "collectible": True},
+    "green_star": {"name": "💚 Green Star", "stars": 2000, "emoji": "💚", "rarity": "ultra_rare", "collectible": True},
     
-    # Mad Pumpkin (дорогие хэллоуин подарки)
-    "mad_pumpkin_5151": {"name": "🎃 Mad Pumpkin", "stars": 5151, "emoji": "🎃", "rarity": "mythic"},
-    "mad_pumpkin_5125": {"name": "🎃 Mad Pumpkin", "stars": 5125, "emoji": "🎃", "rarity": "mythic"},
-    "mad_pumpkin_5043": {"name": "🎃 Mad Pumpkin", "stars": 5043, "emoji": "🎃", "rarity": "mythic"},
-    "mad_pumpkin_4945": {"name": "🎃 Mad Pumpkin", "stars": 4945, "emoji": "🎃", "rarity": "mythic"},
-    "mad_pumpkin_4739": {"name": "🎃 Mad Pumpkin", "stars": 4739, "emoji": "🎃", "rarity": "mythic"},
-    "mad_pumpkin_4533": {"name": "🎃 Mad Pumpkin", "stars": 4533, "emoji": "🎃", "rarity": "mythic"},
-    "mad_pumpkin_4431": {"name": "🎃 Mad Pumpkin", "stars": 4431, "emoji": "🎃", "rarity": "mythic"},
+    # Mythic/Legendary - Очень дорогие сезонные
+    "santa_hat": {"name": "🎅 Santa Hat", "stars": 1500, "emoji": "🎅", "rarity": "mythic", "seasonal": "winter", "collectible": True},
+    "spiced_wine": {"name": "🍷 Spiced Wine", "stars": 1200, "emoji": "🍷", "rarity": "mythic", "seasonal": "winter", "collectible": True},
+    "jelly_bunny": {"name": "🐰 Jelly Bunny", "stars": 1000, "emoji": "🐰", "rarity": "mythic", "seasonal": "easter", "collectible": True},
+    "ghost": {"name": "👻 Ghost", "stars": 900, "emoji": "👻", "rarity": "mythic", "seasonal": "halloween", "collectible": True},
     
-    # Evil Eye (средне-дорогие)
-    "evil_eye_979": {"name": "👁 Evil Eye", "stars": 979, "emoji": "👁", "rarity": "legendary"},
-    "evil_eye_969": {"name": "👁 Evil Eye", "stars": 969, "emoji": "👁", "rarity": "legendary"},
-    "evil_eye_967": {"name": "👁 Evil Eye", "stars": 967, "emoji": "👁", "rarity": "legendary"},
-    "evil_eye_960": {"name": "👁 Evil Eye", "stars": 960, "emoji": "👁", "rarity": "legendary"},
-    "evil_eye_948": {"name": "👁 Evil Eye", "stars": 948, "emoji": "👁", "rarity": "legendary"},
-    "evil_eye_946": {"name": "👁 Evil Eye", "stars": 946, "emoji": "👁", "rarity": "epic"},
-    "evil_eye_897": {"name": "👁 Evil Eye", "stars": 897, "emoji": "👁", "rarity": "epic"},
-    "evil_eye_892": {"name": "👁 Evil Eye", "stars": 892, "emoji": "👁", "rarity": "epic"},
-    "evil_eye_886": {"name": "👁 Evil Eye", "stars": 886, "emoji": "👁", "rarity": "epic"},
-    "evil_eye_874": {"name": "👁 Evil Eye", "stars": 874, "emoji": "👁", "rarity": "epic"},
+    # Legendary - Дорогие праздничные
+    "christmas_tree": {"name": "🎄 Christmas Tree", "stars": 800, "emoji": "🎄", "rarity": "legendary", "seasonal": "winter"},
+    "jack_o_lantern": {"name": "🎃 Jack-o'-lantern", "stars": 750, "emoji": "🎃", "rarity": "legendary", "seasonal": "halloween"},
+    "love_letter": {"name": "💌 Love Letter", "stars": 700, "emoji": "💌", "rarity": "legendary", "seasonal": "valentine"},
+    "birthday_cake": {"name": "🧁 Birthday Cake", "stars": 650, "emoji": "🧁", "rarity": "legendary"},
+    "fireworks": {"name": "🎆 Fireworks", "stars": 600, "emoji": "🎆", "rarity": "legendary"},
     
-    # Jelly Bunny (средние)
-    "jelly_bunny_925": {"name": "🐰 Jelly Bunny", "stars": 925, "emoji": "🐰", "rarity": "legendary"},
-    "jelly_bunny_923": {"name": "🐰 Jelly Bunny", "stars": 923, "emoji": "🐰", "rarity": "legendary"},
-    "jelly_bunny_921": {"name": "🐰 Jelly Bunny", "stars": 921, "emoji": "🐰", "rarity": "legendary"},
-    "jelly_bunny_905": {"name": "🐰 Jelly Bunny", "stars": 905, "emoji": "🐰", "rarity": "epic"},
-    "jelly_bunny_900": {"name": "🐰 Jelly Bunny", "stars": 900, "emoji": "🐰", "rarity": "epic"},
-    "jelly_bunny_894": {"name": "🐰 Jelly Bunny", "stars": 894, "emoji": "🐰", "rarity": "epic"},
-    "jelly_bunny_867": {"name": "🐰 Jelly Bunny", "stars": 867, "emoji": "🐰", "rarity": "epic"},
-    "jelly_bunny_865": {"name": "🐰 Jelly Bunny", "stars": 865, "emoji": "🐰", "rarity": "epic"},
-    "jelly_bunny_824": {"name": "🐰 Jelly Bunny", "stars": 824, "emoji": "🐰", "rarity": "rare"},
-    "jelly_bunny_818": {"name": "🐰 Jelly Bunny", "stars": 818, "emoji": "🐰", "rarity": "rare"},
-    "jelly_bunny_816": {"name": "🐰 Jelly Bunny", "stars": 816, "emoji": "🐰", "rarity": "rare"},
+    # Epic - Средне-дорогие
+    "golden_star": {"name": "⭐ Golden Star", "stars": 500, "emoji": "⭐", "rarity": "epic"},
+    "party_hat": {"name": "🎉 Party Hat", "stars": 450, "emoji": "🎉", "rarity": "epic"},
+    "champagne": {"name": "🥂 Champagne", "stars": 400, "emoji": "🥂", "rarity": "epic"},
+    "gift_box": {"name": "🎁 Gift Box", "stars": 350, "emoji": "🎁", "rarity": "epic"},
+    "chocolate": {"name": "🍫 Chocolate", "stars": 300, "emoji": "🍫", "rarity": "epic"},
+    "balloon": {"name": "🎈 Balloon", "stars": 250, "emoji": "🎈", "rarity": "epic"},
     
-    # B-Day Candle (дешевые)
-    "bday_candle_334": {"name": "🕯 B-Day Candle", "stars": 334, "emoji": "🕯", "rarity": "uncommon"},
-    "bday_candle_319": {"name": "🕯 B-Day Candle", "stars": 319, "emoji": "🕯", "rarity": "uncommon"},
-    "bday_candle_317": {"name": "🕯 B-Day Candle", "stars": 317, "emoji": "🕯", "rarity": "uncommon"},
-    "bday_candle_309": {"name": "🕯 B-Day Candle", "stars": 309, "emoji": "🕯", "rarity": "uncommon"},
-    "bday_candle_307": {"name": "🕯 B-Day Candle", "stars": 307, "emoji": "🕯", "rarity": "common"},
+    # Rare - Доступные подарки  
+    "red_heart": {"name": "❤️ Red Heart", "stars": 200, "emoji": "❤️", "rarity": "rare"},
+    "blue_heart": {"name": "💙 Blue Heart", "stars": 180, "emoji": "💙", "rarity": "rare"},
+    "purple_heart": {"name": "💜 Purple Heart", "stars": 160, "emoji": "💜", "rarity": "rare"},
+    "yellow_heart": {"name": "💛 Yellow Heart", "stars": 140, "emoji": "💛", "rarity": "rare"},
+    "orange_heart": {"name": "🧡 Orange Heart", "stars": 120, "emoji": "🧡", "rarity": "rare"},
+    "pink_heart": {"name": "💗 Pink Heart", "stars": 100, "emoji": "💗", "rarity": "rare"},
     
-    # Desk Calendar (средне-дешевые)
-    "desk_calendar_301": {"name": "📅 Desk Calendar", "stars": 301, "emoji": "📅", "rarity": "uncommon"},
-    "desk_calendar_299": {"name": "📅 Desk Calendar", "stars": 299, "emoji": "📅", "rarity": "uncommon"},
-    "desk_calendar_295": {"name": "📅 Desk Calendar", "stars": 295, "emoji": "📅", "rarity": "uncommon"},
-    "desk_calendar_289": {"name": "📅 Desk Calendar", "stars": 289, "emoji": "📅", "rarity": "uncommon"},
-    "desk_calendar_287": {"name": "📅 Desk Calendar", "stars": 287, "emoji": "📅", "rarity": "common"},
-    "desk_calendar_199": {"name": "📅 Desk Calendar", "stars": 199, "emoji": "📅", "rarity": "common"},
-    
-    # Базовые дешевые подарки
-    "delicious_cake": {"name": "🎂 Delicious Cake", "stars": 1, "emoji": "🎂", "rarity": "common"},
-    "green_star": {"name": "💚 Green Star", "stars": 2, "emoji": "💚", "rarity": "common"},
-    "fireworks": {"name": "🎆 Fireworks", "stars": 5, "emoji": "🎆", "rarity": "common"},
-    "blue_star": {"name": "💙 Blue Star", "stars": 10, "emoji": "💙", "rarity": "common"},
-    "red_heart": {"name": "❤️ Red Heart", "stars": 25, "emoji": "❤️", "rarity": "uncommon"},
+    # Common - Базовые подарки
+    "rose": {"name": "🌹 Rose", "stars": 80, "emoji": "🌹", "rarity": "common"},
+    "sunflower": {"name": "🌻 Sunflower", "stars": 60, "emoji": "🌻", "rarity": "common"},
+    "tulip": {"name": "🌷 Tulip", "stars": 50, "emoji": "🌷", "rarity": "common"},
+    "daisy": {"name": "🌼 Daisy", "stars": 40, "emoji": "🌼", "rarity": "common"},
+    "star": {"name": "⭐ Star", "stars": 25, "emoji": "⭐", "rarity": "common"},
+    "candy": {"name": "🍬 Candy", "stars": 15, "emoji": "🍬", "rarity": "common"},
+    "lollipop": {"name": "🍭 Lollipop", "stars": 10, "emoji": "🍭", "rarity": "common"},
+    "cookie": {"name": "🍪 Cookie", "stars": 5, "emoji": "🍪", "rarity": "common"},
+    "kiss": {"name": "💋 Kiss", "stars": 1, "emoji": "💋", "rarity": "common"}
 }
 
-# Кейсы с реалистичными подарками и шансами
-CASES = {
-    "basic_gifts": {
-        "name": "Базовые Подарки", 
-        "emoji": "🎁", 
-        "price": 50,
-        "items": [
-            {"id": "delicious_cake", "chance": 35},
-            {"id": "green_star", "chance": 30},
-            {"id": "fireworks", "chance": 20},
-            {"id": "blue_star", "chance": 12},
-            {"id": "red_heart", "chance": 3}
-        ]
-    },
-    "calendar_case": {
-        "name": "Календарные Подарки", 
-        "emoji": "📅", 
-        "price": 150,
-        "items": [
-            {"id": "desk_calendar_199", "chance": 25},
-            {"id": "desk_calendar_287", "chance": 20},
-            {"id": "desk_calendar_289", "chance": 18},
-            {"id": "desk_calendar_295", "chance": 15},
-            {"id": "desk_calendar_299", "chance": 12},
-            {"id": "desk_calendar_301", "chance": 10}
-        ]
-    },
-    "birthday_case": {
-        "name": "День Рождения", 
-        "emoji": "🕯", 
-        "price": 200,
-        "items": [
-            {"id": "bday_candle_307", "chance": 25},
-            {"id": "bday_candle_309", "chance": 20},
-            {"id": "bday_candle_317", "chance": 18},
-            {"id": "bday_candle_319", "chance": 15},
-            {"id": "bday_candle_334", "chance": 12},
-            {"id": "red_heart", "chance": 10}
-        ]
-    },
-    "bunny_case": {
-        "name": "Желейные Кролики", 
-        "emoji": "🐰", 
-        "price": 500,
-        "items": [
-            {"id": "jelly_bunny_816", "chance": 20},
-            {"id": "jelly_bunny_818", "chance": 18},
-            {"id": "jelly_bunny_824", "chance": 16},
-            {"id": "jelly_bunny_865", "chance": 14},
-            {"id": "jelly_bunny_867", "chance": 12},
-            {"id": "jelly_bunny_894", "chance": 8},
-            {"id": "jelly_bunny_900", "chance": 6},
-            {"id": "jelly_bunny_905", "chance": 4},
-            {"id": "jelly_bunny_921", "chance": 2}
-        ]
-    },
-    "evil_eye_case": {
-        "name": "Дурной Глаз", 
-        "emoji": "👁", 
-        "price": 750,
-        "items": [
-            {"id": "evil_eye_874", "chance": 20},
-            {"id": "evil_eye_886", "chance": 18},
-            {"id": "evil_eye_892", "chance": 16},
-            {"id": "evil_eye_897", "chance": 14},
-            {"id": "evil_eye_946", "chance": 12},
-            {"id": "evil_eye_948", "chance": 8},
-            {"id": "evil_eye_960", "chance": 6},
-            {"id": "evil_eye_967", "chance": 4},
-            {"id": "evil_eye_969", "chance": 1.5},
-            {"id": "evil_eye_979", "chance": 0.5}
-        ]
-    },
-    "hanging_star_case": {
-        "name": "Висящие Звезды", 
-        "emoji": "💫", 
-        "price": 1000,
-        "items": [
-            {"id": "hanging_star_1422", "chance": 25},
-            {"id": "hanging_star_1443", "chance": 20},
-            {"id": "hanging_star_1499", "chance": 15},
-            {"id": "hanging_star_1500", "chance": 12},
-            {"id": "hanging_star_1545", "chance": 10},
-            {"id": "hanging_star_1554", "chance": 8},
-            {"id": "hanging_star_1649", "chance": 5},
-            {"id": "evil_eye_979", "chance": 5}
-        ]
-    },
-    "ultimate_pumpkin_case": {
-        "name": "Безумные Тыквы", 
-        "emoji": "🎃", 
-        "price": 2000,
-        "items": [
-            {"id": "mad_pumpkin_4431", "chance": 20},
-            {"id": "mad_pumpkin_4533", "chance": 18},
-            {"id": "mad_pumpkin_4739", "chance": 15},
-            {"id": "mad_pumpkin_4945", "chance": 12},
-            {"id": "mad_pumpkin_5043", "chance": 10},
-            {"id": "mad_pumpkin_5125", "chance": 8},
-            {"id": "mad_pumpkin_5151", "chance": 5},
-            {"id": "hanging_star_1649", "chance": 7},
-            {"id": "evil_eye_979", "chance": 5}
-        ]
-    }
+# Цвета редкости
+RARITY_COLORS = {
+    "common": "#9CA3AF",      # Gray
+    "rare": "#22C55E",        # Green  
+    "epic": "#3B82F6",        # Blue
+    "legendary": "#A855F7",   # Purple
+    "mythic": "#F97316",      # Orange
+    "ultra_rare": "#EF4444"   # Red
 }
 
-class CrashGame:
-    def __init__(self):
-        self.multiplier = 1.0
-        self.is_running = False
-        self.is_crashed = False
-        self.bets = {}
-        self.cashed_out = {}
-        self.start_time = None
-        self.crash_point = None
-        
-    def start_round(self):
-        self.multiplier = 1.0
-        self.is_running = True
-        self.is_crashed = False
-        self.bets = {}
-        self.cashed_out = {}
-        self.start_time = time.time()
-        self.crash_point = self.generate_crash_point()
-        logger.info(f"New crash game started. Crash point: {self.crash_point:.2f}")
-        
-    def generate_crash_point(self):
-        rand = random.random()
-        if rand < 0.05:
-            return random.uniform(10.0, 100.0)
-        elif rand < 0.15:
-            return random.uniform(5.0, 10.0)
-        elif rand < 0.35:
-            return random.uniform(2.0, 5.0)
-        else:
-            return random.uniform(1.01, 2.0)
-    
-    def update_multiplier(self):
-        if not self.is_running or self.is_crashed:
-            return
-            
-        elapsed = time.time() - self.start_time
-        self.multiplier = 1.0 + elapsed * 0.1 * (1 + elapsed * 0.05)
-        
-        if self.multiplier >= self.crash_point:
-            self.crash()
-    
-    def crash(self):
-        self.is_crashed = True
-        self.is_running = False
-        logger.info(f"Game crashed at {self.multiplier:.2f}")
-        
-        # Обработка проигравших ставок
-        for user_id in self.bets:
-            if user_id not in self.cashed_out:
-                user_data = get_user_data(user_id)
-                user_data['total_lost'] += self.bets[user_id]['amount']
-                user_data['games_lost'] += 1
-    
-    def place_bet(self, user_id, amount, auto_cashout=None):
-        user_id_str = str(user_id)
-        
-        if self.is_running:
-            return False, "Игра уже идет"
-        
-        user_data = get_user_data(user_id)
-        if user_data['balance'] < amount:
-            return False, "Недостаточно средств"
-        
-        user_data['balance'] -= amount
-        user_data['total_bet'] += amount
-        user_data['games_played'] += 1
-        
-        self.bets[user_id_str] = {
-            'amount': amount,
-            'auto_cashout': auto_cashout
-        }
-        return True, "Ставка принята"
-    
-    def cashout(self, user_id):
-        user_id_str = str(user_id)
-        
-        if not self.is_running or self.is_crashed:
-            return False, "Игра не идет"
-        
-        if user_id_str not in self.bets:
-            return False, "У вас нет ставки"
-        
-        if user_id_str in self.cashed_out:
-            return False, "Вы уже вывели"
-        
-        bet_amount = self.bets[user_id_str]['amount']
-        win_amount = int(bet_amount * self.multiplier)
-        
-        user_data = get_user_data(user_id)
-        user_data['balance'] += win_amount
-        user_data['total_won'] += win_amount
-        user_data['games_won'] += 1
-        
-        self.cashed_out[user_id_str] = self.multiplier
-        return True, f"Выведено {win_amount} монет при x{self.multiplier:.2f}"
+RARITY_GRADIENTS = {
+    "common": "linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%)",
+    "rare": "linear-gradient(135deg, #22C55E 0%, #16A34A 100%)",
+    "epic": "linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)",
+    "legendary": "linear-gradient(135deg, #A855F7 0%, #9333EA 100%)",
+    "mythic": "linear-gradient(135deg, #F97316 0%, #EA580C 100%)",
+    "ultra_rare": "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)"
+}
 
 def get_user_data(user_id):
     user_id = str(user_id)
     if user_id not in users:
         users[user_id] = {
-            "balance": 1000,
+            "balance": 0,
             "gifts_sent": 0,
             "gifts_received": 0,
             "total_spent": 0,
-            "games_played": 0,
-            "games_won": 0,
-            "games_lost": 0,
-            "total_bet": 0,
-            "total_won": 0,
-            "total_lost": 0,
-            "last_bonus": None,
-            "level": 1,
-            "experience": 0,
-            "achievements": [],
             "inventory": {},
             "referrals": [],
-            "cases_opened": 0
+            "level": 1,
+            "experience": 0,
+            "daily_streak": 0,
+            "last_daily": None,
+            "achievements": [],
+            "username": None,
+            "first_name": "User",
+            "join_date": datetime.now().isoformat(),
+            "total_value": 0
         }
     return users[user_id]
 
-def send_message(chat_id, text, reply_markup=None):
+def send_message(chat_id, text, reply_markup=None, parse_mode="HTML"):
     try:
         url = f"{API_URL}/sendMessage"
         data = {
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "HTML"
+            "parse_mode": parse_mode
         }
         if reply_markup:
             data["reply_markup"] = json.dumps(reply_markup)
         
         response = requests.post(url, data=data, timeout=10)
-        result = response.json()
-        
-        if not result.get("ok"):
-            logger.error(f"Send message error: {result}")
-            
-        return result
-    except Exception as e:
-        logger.error(f"Failed to send message: {e}")
-        return None
-
-def edit_message(chat_id, message_id, text, reply_markup=None):
-    try:
-        url = f"{API_URL}/editMessageText"
-        data = {
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
-            "parse_mode": "HTML"
-        }
-        if reply_markup:
-            data["reply_markup"] = json.dumps(reply_markup)
-        
-        response = requests.post(url, data=data, timeout=10)
-        result = response.json()
-        
-        if not result.get("ok"):
-            logger.error(f"Edit message error: {result}")
-            
-        return result
-    except Exception as e:
-        logger.error(f"Failed to edit message: {e}")
-        return None
-
-def answer_callback(callback_query_id, text=""):
-    try:
-        url = f"{API_URL}/answerCallbackQuery"
-        data = {
-            "callback_query_id": callback_query_id,
-            "text": text
-        }
-        response = requests.post(url, data=data, timeout=5)
         return response.json()
     except Exception as e:
-        logger.error(f"Failed to answer callback: {e}")
+        logger.error(f"Failed to send message: {e}")
         return None
 
 def main_menu_keyboard():
     return {
         "inline_keyboard": [
-            [{"text": "🚀 Играть в Crash", "callback_data": "play_crash"}],
-            [{"text": "🎁 Магазин подарков", "callback_data": "gift_shop"}],
-            [{"text": "💰 Баланс", "callback_data": "balance"}, {"text": "📊 Статистика", "callback_data": "stats"}],
-            [{"text": "🎁 Ежедневный бонус", "callback_data": "daily_bonus"}],
-            [{"text": "🏆 Достижения", "callback_data": "achievements"}, {"text": "💥 Рефералы", "callback_data": "referrals"}],
-            [{"text": "🎮 WebApp", "web_app": {"url": f"{WEBHOOK_URL}/webapp"}}]
+            [{"text": "🚀 Play", "web_app": {"url": f"{WEBHOOK_URL}/webapp"}}],
+            [{"text": "👥 Рефералы", "callback_data": "referrals"}],
+            [{"text": "ℹ️ Помощь", "callback_data": "help"}]
         ]
     }
 
-def handle_start(chat_id, user_name, referrer_id=None):
+def handle_start(chat_id, user_name, username=None, referrer_id=None):
     user_data = get_user_data(chat_id)
+    user_data["first_name"] = user_name
+    user_data["username"] = username
     
-    # Обработка реферальной системы
+    # Реферальная система
     if referrer_id and str(referrer_id) != str(chat_id):
         referrer_data = get_user_data(referrer_id)
         if str(chat_id) not in referrer_data['referrals']:
-            referrer_data['balance'] += 500
             referrer_data['referrals'].append(str(chat_id))
-            user_data['balance'] += 200
+            referrer_data['experience'] += 100
+            user_data['experience'] += 50
             
-            send_message(referrer_id, f"🎉 Новый реферал! +500 монет\nВсего рефералов: {len(referrer_data['referrals'])}")
-    
-    text = f"""🎁 <b>Добро пожаловать в GiftBot, {user_name}!</b>
+            send_message(referrer_id, 
+                f"🎉 <b>Новый реферал!</b>\n\n"
+                f"👤 {user_name} присоединился\n"
+                f"🎁 +100 XP")
 
-💰 <b>Баланс:</b> {user_data['balance']} монет
-🎯 <b>Уровень:</b> {user_data['level']} ({user_data['experience']} XP)
+    # Получение подарка
+    if referrer_id and referrer_id.startswith('gift_'):
+        gift_code = referrer_id[5:]
+        handle_receive_gift(chat_id, user_name, username, gift_code)
+        return
 
-🚀 <b>Crash Game</b> - главная игра!
-🎁 <b>Магазин подарков</b> - купите подарки друзьям
-📈 <b>Статистика</b> - ваши достижения
+    text = f"""🎁 <b>Добро пожаловать в GiftUp!</b>
 
-💡 <i>Совет: начните с малых ставок!</i>"""
+👋 Привет, <b>{user_name}</b>!
+
+🎮 <b>GiftUp</b> - отправляйте подарки друзьям в Telegram!
+
+✨ <b>Возможности:</b>
+• 🎁 Отправка подарков любому пользователю
+• 🎒 Коллекционирование редких предметов  
+• 🏆 Соревнование в рейтингах
+• 💫 Система уровней и достижений
+
+🚀 Нажмите <b>"Play"</b> чтобы начать!"""
 
     send_message(chat_id, text, main_menu_keyboard())
 
-def get_random_item_from_case(case):
-    """Получить случайный предмет из кейса с учетом шансов"""
-    total_chance = sum(item['chance'] for item in case['items'])
-    random_value = random.random() * total_chance
+def handle_receive_gift(chat_id, user_name, username, gift_code):
+    """Получение подарка по коду"""
+    if gift_code not in active_gifts:
+        send_message(chat_id, 
+            "❌ <b>Подарок недоступен</b>\n\n"
+            "Возможные причины:\n"
+            "• Подарок уже получен\n"
+            "• Ссылка устарела\n"
+            "• Неверная ссылка",
+            main_menu_keyboard())
+        return
     
-    current_chance = 0
-    for item in case['items']:
-        current_chance += item['chance']
-        if random_value <= current_chance:
-            return item
+    gift_info = active_gifts[gift_code]
+    sender_id = gift_info["sender_id"]
+    gift_id = gift_info["gift_id"]
     
-    return case['items'][0]  # fallback
-
-def get_rarity_from_stars(stars):
-    """Определить редкость по количеству звезд"""
-    if stars <= 25:
-        return "common"
-    elif stars <= 100:
-        return "uncommon"
-    elif stars <= 500:
-        return "rare"
-    elif stars <= 1000:
-        return "epic"
-    elif stars <= 2000:
-        return "legendary"
-    else:
-        return "mythic"
-
-def game_loop():
-    global current_crash_game
+    if str(chat_id) == str(sender_id):
+        send_message(chat_id, "❌ <b>Нельзя получить свой подарок!</b>", main_menu_keyboard())
+        return
     
-    while True:
-        try:
-            with game_lock:
-                current_crash_game = CrashGame()
-                
-                # Ожидание между играми
-                time.sleep(10)
-                
-                # Запуск новой игры
-                current_crash_game.start_round()
-                
-                # Игровой цикл
-                while current_crash_game.is_running and not current_crash_game.is_crashed:
-                    current_crash_game.update_multiplier()
-                    
-                    # Проверка авто-вывода
-                    for user_id in list(current_crash_game.bets.keys()):
-                        bet_info = current_crash_game.bets[user_id]
-                        if (bet_info.get('auto_cashout') and 
-                            current_crash_game.multiplier >= bet_info['auto_cashout'] and
-                            user_id not in current_crash_game.cashed_out):
-                            current_crash_game.cashout(user_id)
-                    
-                    time.sleep(0.1)
-                
-                # Обеспечиваем краш если игра завершилась не крашем
-                if not current_crash_game.is_crashed:
-                    current_crash_game.crash()
-                
-                # Пауза после краша
-                time.sleep(10)
-                
-        except Exception as e:
-            logger.error(f"Game loop error: {e}")
-            time.sleep(5)
+    # Проверяем время (24 часа)
+    if time.time() - gift_info["created_at"] > 24 * 3600:
+        del active_gifts[gift_code]
+        send_message(chat_id, "⏰ <b>Срок действия подарка истек!</b>", main_menu_keyboard())
+        return
+    
+    gift = TELEGRAM_GIFTS[gift_id]
+    
+    # Обновляем данные
+    sender_data = get_user_data(sender_id)
+    receiver_data = get_user_data(chat_id)
+    receiver_data["first_name"] = user_name
+    receiver_data["username"] = username
+    
+    sender_data["gifts_sent"] += 1
+    sender_data["total_spent"] += gift["stars"]
+    sender_data["experience"] += gift["stars"] // 10
+    
+    if gift_id not in receiver_data["inventory"]:
+        receiver_data["inventory"][gift_id] = 0
+    receiver_data["inventory"][gift_id] += 1
+    receiver_data["gifts_received"] += 1
+    receiver_data["experience"] += gift["stars"] // 5
+    receiver_data["total_value"] += gift["stars"]
+    
+    del active_gifts[gift_code]
+    
+    # Уведомления
+    text = f"""🎉 <b>Подарок получен!</b>
 
-# Запуск игрового цикла в отдельном потоке
-game_thread = threading.Thread(target=game_loop)
-game_thread.daemon = True
-game_thread.start()
+{gift['emoji']} <b>{gift['name']}</b>
+⭐ <b>Стоимость:</b> {gift['stars']} звезд
+👤 <b>От:</b> {sender_data['first_name']}
+
+🎒 Добавлено в инвентарь!"""
+
+    send_message(chat_id, text, main_menu_keyboard())
+    
+    send_message(sender_id, 
+        f"✅ <b>Подарок доставлен!</b>\n\n"
+        f"{gift['emoji']} {gift['name']}\n"
+        f"👤 {user_name}")
 
 @app.route("/")
 def home():
     return """
-    <h1>🎁 GiftBot Crash Game 🚀</h1>
-    <p>Telegram bot в стиле GiftUp</p>
+    <h1>🎁 GiftUp Clone</h1>
+    <p>Telegram Gift Bot</p>
     """
 
 @app.route("/webapp")
 def webapp():
-    html_content = '''<!DOCTYPE html>
+    return render_template_string('''
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GiftBot WebApp</title>
+    <title>GiftUp</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body {
+        * {
             margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             min-height: 100vh;
+            padding: 0;
+            overflow-x: hidden;
         }
+        
         .container {
-            max-width: 400px;
+            max-width: 100%;
             margin: 0 auto;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .header {
             text-align: center;
-        }
-        h1 {
             margin-bottom: 30px;
-            font-size: 28px;
+            padding: 20px 0;
         }
-        .game-area {
+        
+        .header h1 {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .stats-card {
             background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
             border-radius: 20px;
             padding: 20px;
-            margin: 20px 0;
-            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        .button {
+        
+        .nav-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .nav-item {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: none;
+            border-radius: 15px;
+            padding: 20px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+        
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
+        }
+        
+        .nav-item .icon {
+            font-size: 24px;
+        }
+        
+        .page {
+            display: none;
+        }
+        
+        .page.active {
+            display: block;
+        }
+        
+        .gift-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .gift-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .gift-card:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .gift-emoji {
+            font-size: 32px;
+            min-width: 50px;
+        }
+        
+        .gift-info {
+            flex: 1;
+        }
+        
+        .gift-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .gift-price {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        .rarity-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-top: 5px;
+            display: inline-block;
+        }
+        
+        .btn-primary {
             background: linear-gradient(45deg, #ff6b6b, #ee5a24);
             border: none;
             border-radius: 12px;
             color: white;
             font-size: 16px;
-            padding: 12px 24px;
-            margin: 10px 5px;
+            font-weight: 600;
+            padding: 15px 30px;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 20px;
         }
-        .button:hover {
+        
+        .btn-primary:hover {
             transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(255, 107, 107, 0.3);
         }
-        .status {
-            font-size: 24px;
-            margin: 20px 0;
-            font-weight: bold;
-        }
-        .balance {
-            background: rgba(0, 0, 0, 0.3);
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
             border-radius: 12px;
+            color: white;
+            font-size: 14px;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 5px;
+        }
+        
+        .inventory-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .inventory-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
             padding: 15px;
-            margin: 20px 0;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .inventory-emoji {
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
+        
+        .inventory-count {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        .back-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            z-index: 1000;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 2000;
+            padding: 20px;
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 400px;
+            margin: 50px auto;
+            text-align: center;
+            position: relative;
+        }
+        
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        
+        .leaderboard-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            margin-bottom: 10px;
+        }
+        
+        .rank {
+            font-size: 20px;
+            font-weight: bold;
+            min-width: 30px;
+        }
+        
+        .user-info {
+            flex: 1;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .loading {
+            animation: pulse 2s infinite;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎁 GiftBot WebApp</h1>
-        
-        <div class="balance">
-            <div>💰 Баланс: <span id="balance">1000</span> монет</div>
-        </div>
-        
-        <div class="game-area">
-            <div class="status">🚀 Crash Game</div>
-            <div id="multiplier">1.00x</div>
-            <div id="status">Ожидание...</div>
+        <!-- Главная страница -->
+        <div id="home" class="page active">
+            <div class="header">
+                <h1>🎁 GiftUp</h1>
+                <p>Отправляйте подарки друзьям!</p>
+            </div>
             
-            <button class="button" onclick="placeBet(50)">Ставка 50</button>
-            <button class="button" onclick="placeBet(100)">Ставка 100</button>
-            <button class="button" onclick="cashOut()" id="cashoutBtn" disabled>💸 Вывести</button>
+            <div class="stats-card">
+                <h3>👤 <span id="userName">Пользователь</span></h3>
+                <p>🎒 Подарков в инвентаре: <span id="inventoryCount">0</span></p>
+                <p>🎁 Отправлено: <span id="giftsSent">0</span></p>
+                <p>📦 Получено: <span id="giftsReceived">0</span></p>
+                <p>💫 Уровень: <span id="userLevel">1</span></p>
+            </div>
+            
+            <div class="nav-grid">
+                <button class="nav-item" onclick="showPage('send')">
+                    <div class="icon">🎁</div>
+                    <div>Отправить</div>
+                </button>
+                <button class="nav-item" onclick="showPage('inventory')">
+                    <div class="icon">🎒</div>
+                    <div>Инвентарь</div>
+                </button>
+                <button class="nav-item" onclick="showPage('shop')">
+                    <div class="icon">🏪</div>
+                    <div>Магазин</div>
+                </button>
+                <button class="nav-item" onclick="showPage('leaderboard')">
+                    <div class="icon">🏆</div>
+                    <div>Рейтинг</div>
+                </button>
+            </div>
         </div>
         
-        <div class="game-area">
-            <h3>🎁 Магазин подарков</h3>
-            <p>Открывайте кейсы и получайте редкие подарки!</p>
-            <button class="button" onclick="openCase()">Открыть кейс (50 монет)</button>
+        <!-- Отправка подарков -->
+        <div id="send" class="page">
+            <button class="back-btn" onclick="showPage('home')">←</button>
+            <div class="header">
+                <h2>🎁 Отправить подарок</h2>
+                <p>Выберите подарок для отправки</p>
+            </div>
+            
+            <div class="btn-secondary" onclick="filterGifts('all')" style="background: rgba(255,255,255,0.3);">Все</div>
+            <div class="btn-secondary" onclick="filterGifts('collectible')">🏆 Коллекционные</div>
+            <div class="btn-secondary" onclick="filterGifts('seasonal')">🎄 Сезонные</div>
+            <div class="btn-secondary" onclick="filterGifts('hearts')">💖 Сердечки</div>
+            <div class="btn-secondary" onclick="filterGifts('flowers')">🌸 Цветы</div>
+            
+            <div class="gift-grid" id="sendGiftGrid">
+                <!-- Подарки загружаются через JS -->
+            </div>
+        </div>
+        
+        <!-- Инвентарь -->
+        <div id="inventory" class="page">
+            <button class="back-btn" onclick="showPage('home')">←</button>
+            <div class="header">
+                <h2>🎒 Мой инвентарь</h2>
+                <p id="inventoryValue">Общая стоимость: 0 ⭐</p>
+            </div>
+            
+            <div class="inventory-grid" id="inventoryGrid">
+                <!-- Инвентарь загружается через JS -->
+            </div>
+        </div>
+        
+        <!-- Магазин -->
+        <div id="shop" class="page">
+            <button class="back-btn" onclick="showPage('home')">←</button>
+            <div class="header">
+                <h2>🏪 Магазин подарков</h2>
+                <p>Все доступные предметы</p>
+            </div>
+            
+            <div class="gift-grid" id="shopGrid">
+                <!-- Магазин загружается через JS -->
+            </div>
+        </div>
+        
+        <!-- Рейтинг -->
+        <div id="leaderboard" class="page">
+            <button class="back-btn" onclick="showPage('home')">←</button>
+            <div class="header">
+                <h2>🏆 Рейтинг игроков</h2>
+                <p>Топ отправителей подарков</p>
+            </div>
+            
+            <div id="leaderboardList">
+                <div class="loading">Загрузка рейтинга...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Модальное окно подарка -->
+    <div id="giftModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeGiftModal()">×</button>
+            <div id="giftModalContent"></div>
         </div>
     </div>
     
     <script>
-        let gameState = {
-            balance: 1000,
-            currentBet: 0,
-            isPlaying: false
+        // Telegram WebApp
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand();
+        }
+        
+        // Данные пользователя
+        let userData = {
+            id: tg?.initDataUnsafe?.user?.id || 'demo',
+            first_name: tg?.initDataUnsafe?.user?.first_name || 'Demo User',
+            username: tg?.initDataUnsafe?.user?.username || 'demo',
+            inventory: {},
+            gifts_sent: 0,
+            gifts_received: 0,
+            level: 1,
+            total_value: 0
         };
         
-        function updateBalance() {
-            document.getElementById('balance').textContent = gameState.balance;
+        // Официальные подарки Telegram
+        const gifts = {
+            "delicious_cake": {"name": "🎂 Delicious Cake", "stars": 2500, "emoji": "🎂", "rarity": "ultra_rare", "collectible": true},
+            "green_star": {"name": "💚 Green Star", "stars": 2000, "emoji": "💚", "rarity": "ultra_rare", "collectible": true},
+            "santa_hat": {"name": "🎅 Santa Hat", "stars": 1500, "emoji": "🎅", "rarity": "mythic", "seasonal": "winter", "collectible": true},
+            "spiced_wine": {"name": "🍷 Spiced Wine", "stars": 1200, "emoji": "🍷", "rarity": "mythic", "seasonal": "winter", "collectible": true},
+            "jelly_bunny": {"name": "🐰 Jelly Bunny", "stars": 1000, "emoji": "🐰", "rarity": "mythic", "seasonal": "easter", "collectible": true},
+            "ghost": {"name": "👻 Ghost", "stars": 900, "emoji": "👻", "rarity": "mythic", "seasonal": "halloween", "collectible": true},
+            "christmas_tree": {"name": "🎄 Christmas Tree", "stars": 800, "emoji": "🎄", "rarity": "legendary", "seasonal": "winter"},
+            "jack_o_lantern": {"name": "🎃 Jack-o'-lantern", "stars": 750, "emoji": "🎃", "rarity": "legendary", "seasonal": "halloween"},
+            "love_letter": {"name": "💌 Love Letter", "stars": 700, "emoji": "💌", "rarity": "legendary", "seasonal": "valentine"},
+            "birthday_cake": {"name": "🧁 Birthday Cake", "stars": 650, "emoji": "🧁", "rarity": "legendary"},
+            "fireworks": {"name": "🎆 Fireworks", "stars": 600, "emoji": "🎆", "rarity": "legendary"},
+            "golden_star": {"name": "⭐ Golden Star", "stars": 500, "emoji": "⭐", "rarity": "epic"},
+            "party_hat": {"name": "🎉 Party Hat", "stars": 450, "emoji": "🎉", "rarity": "epic"},
+            "champagne": {"name": "🥂 Champagne", "stars": 400, "emoji": "🥂", "rarity": "epic"},
+            "gift_box": {"name": "🎁 Gift Box", "stars": 350, "emoji": "🎁", "rarity": "epic"},
+            "chocolate": {"name": "🍫 Chocolate", "stars": 300, "emoji": "🍫", "rarity": "epic"},
+            "balloon": {"name": "🎈 Balloon", "stars": 250, "emoji": "🎈", "rarity": "epic"},
+            "red_heart": {"name": "❤️ Red Heart", "stars": 200, "emoji": "❤️", "rarity": "rare"},
+            "blue_heart": {"name": "💙 Blue Heart", "stars": 180, "emoji": "💙", "rarity": "rare"},
+            "purple_heart": {"name": "💜 Purple Heart", "stars": 160, "emoji": "💜", "rarity": "rare"},
+            "yellow_heart": {"name": "💛 Yellow Heart", "stars": 140, "emoji": "💛", "rarity": "rare"},
+            "orange_heart": {"name": "🧡 Orange Heart", "stars": 120, "emoji": "🧡", "rarity": "rare"},
+            "pink_heart": {"name": "💗 Pink Heart", "stars": 100, "emoji": "💗", "rarity": "rare"},
+            "rose": {"name": "🌹 Rose", "stars": 80, "emoji": "🌹", "rarity": "common"},
+            "sunflower": {"name": "🌻 Sunflower", "stars": 60, "emoji": "🌻", "rarity": "common"},
+            "tulip": {"name": "🌷 Tulip", "stars": 50, "emoji": "🌷", "rarity": "common"},
+            "daisy": {"name": "🌼 Daisy", "stars": 40, "emoji": "🌼", "rarity": "common"},
+            "star": {"name": "⭐ Star", "stars": 25, "emoji": "⭐", "rarity": "common"},
+            "candy": {"name": "🍬 Candy", "stars": 15, "emoji": "🍬", "rarity": "common"},
+            "lollipop": {"name": "🍭 Lollipop", "stars": 10, "emoji": "🍭", "rarity": "common"},
+            "cookie": {"name": "🍪 Cookie", "stars": 5, "emoji": "🍪", "rarity": "common"},
+            "kiss": {"name": "💋 Kiss", "stars": 1, "emoji": "💋", "rarity": "common"}
+        };
+        
+        const rarityColors = {
+            "common": "#9CA3AF",
+            "rare": "#22C55E",
+            "epic": "#3B82F6",
+            "legendary": "#A855F7",
+            "mythic": "#F97316",
+            "ultra_rare": "#EF4444"
+        };
+        
+        const rarityNames = {
+            "common": "Обычный",
+            "rare": "Редкий",
+            "epic": "Эпический", 
+            "legendary": "Легендарный",
+            "mythic": "Мифический",
+            "ultra_rare": "Ультра редкий"
+        };
+        
+        // Инициализация
+        function init() {
+            loadUserData();
+            updateUI();
+            loadGifts();
         }
         
-        function placeBet(amount) {
-            if (gameState.isPlaying) {
-                alert('Игра уже идет!');
-                return;
-            }
+        function loadUserData() {
+            // Загрузка данных пользователя с сервера
+            fetch('/api/user/' + userData.id)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        userData = {...userData, ...data.user};
+                        updateUI();
+                        loadInventory();
+                    }
+                })
+                .catch(error => {
+                    console.log('Demo mode - using local data');
+                    // Демо данные для тестирования
+                    userData.inventory = {
+                        "jelly_bunny": 1,
+                        "santa_hat": 1, 
+                        "chocolate": 2,
+                        "red_heart": 3,
+                        "rose": 5,
+                        "cookie": 10
+                    };
+                    userData.gifts_sent = 15;
+                    userData.gifts_received = 23;
+                    userData.level = 5;
+                    updateUI();
+                    loadInventory();
+                });
+        }
+        
+        function updateUI() {
+            document.getElementById('userName').textContent = userData.first_name;
+            document.getElementById('inventoryCount').textContent = Object.keys(userData.inventory).length;
+            document.getElementById('giftsSent').textContent = userData.gifts_sent;
+            document.getElementById('giftsReceived').textContent = userData.gifts_received;
+            document.getElementById('userLevel').textContent = userData.level;
             
-            if (gameState.balance < amount) {
-                alert('Недостаточно монет!');
-                return;
-            }
-            
-            gameState.balance -= amount;
-            gameState.currentBet = amount;
-            gameState.isPlaying = true;
-            
-            updateBalance();
-            document.getElementById('cashoutBtn').disabled = false;
-            document.getElementById('status').textContent = 'Игра идет...';
-            
-            // Симуляция игры
-            setTimeout(() => {
-                if (Math.random() < 0.7) {
-                    // Проиграл
-                    gameState.isPlaying = false;
-                    document.getElementById('cashoutBtn').disabled = true;
-                    document.getElementById('status').textContent = 'Краш! Попробуйте еще раз';
-                    gameState.currentBet = 0;
-                } else {
-                    // Выиграл
-                    const multiplier = 1.5 + Math.random() * 2;
-                    const winAmount = Math.floor(gameState.currentBet * multiplier);
-                    gameState.balance += winAmount;
-                    gameState.isPlaying = false;
-                    gameState.currentBet = 0;
-                    
-                    updateBalance();
-                    document.getElementById('cashoutBtn').disabled = true;
-                    document.getElementById('status').textContent = `Выигрыш! +${winAmount} монет`;
+            // Подсчет общей стоимости инвентаря
+            let totalValue = 0;
+            for (let giftId in userData.inventory) {
+                if (gifts[giftId]) {
+                    totalValue += gifts[giftId].stars * userData.inventory[giftId];
                 }
-            }, 3000 + Math.random() * 5000);
+            }
+            userData.total_value = totalValue;
+            
+            const valueElement = document.getElementById('inventoryValue');
+            if (valueElement) {
+                valueElement.textContent = `Общая стоимость: ${totalValue} ⭐`;
+            }
         }
         
-        function cashOut() {
-            if (!gameState.isPlaying) return;
+        function showPage(pageId) {
+            // Скрыть все страницы
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
             
-            const multiplier = 1.2 + Math.random() * 1.5;
-            const winAmount = Math.floor(gameState.currentBet * multiplier);
+            // Показать нужную страницу
+            document.getElementById(pageId).classList.add('active');
             
-            gameState.balance += winAmount;
-            gameState.isPlaying = false;
-            gameState.currentBet = 0;
-            
-            updateBalance();
-            document.getElementById('cashoutBtn').disabled = true;
-            document.getElementById('status').textContent = `Вывод! +${winAmount} монет`;
+            // Загрузить данные страницы
+            if (pageId === 'inventory') {
+                loadInventory();
+            } else if (pageId === 'send') {
+                loadGifts('send');
+            } else if (pageId === 'shop') {
+                loadGifts('shop');
+            } else if (pageId === 'leaderboard') {
+                loadLeaderboard();
+            }
         }
         
-        function openCase() {
-            if (gameState.balance < 50) {
-                alert('Недостаточно монет для открытия кейса!');
+        function loadGifts(mode = 'send', filter = 'all') {
+            const containerId = mode === 'send' ? 'sendGiftGrid' : 'shopGrid';
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            // Сортировка подарков по стоимости
+            const sortedGifts = Object.entries(gifts).sort((a, b) => b[1].stars - a[1].stars);
+            
+            for (let [giftId, gift] of sortedGifts) {
+                // Фильтрация по категориям
+                if (filter !== 'all') {
+                    if (filter === 'collectible' && !gift.collectible) continue;
+                    if (filter === 'seasonal' && !gift.seasonal) continue;
+                    if (filter === 'hearts' && !giftId.includes('heart')) continue;
+                    if (filter === 'flowers' && !['rose', 'sunflower', 'tulip', 'daisy'].includes(giftId)) continue;
+                }
+                
+                const giftCard = document.createElement('div');
+                giftCard.className = 'gift-card';
+                giftCard.onclick = () => showGiftModal(giftId, mode);
+                
+                const rarityColor = rarityColors[gift.rarity];
+                const rarityName = rarityNames[gift.rarity];
+                
+                // Специальные метки
+                let badges = '';
+                if (gift.collectible) badges += '<span style="background: #FFD700; color: black; padding: 2px 6px; border-radius: 8px; font-size: 10px; margin-left: 5px;">NFT</span>';
+                if (gift.seasonal) badges += '<span style="background: #FF6B6B; color: white; padding: 2px 6px; border-radius: 8px; font-size: 10px; margin-left: 5px;">СЕЗОН</span>';
+                
+                giftCard.innerHTML = `
+                    <div class="gift-emoji">${gift.emoji}</div>
+                    <div class="gift-info">
+                        <div class="gift-name">${gift.name} ${badges}</div>
+                        <div class="gift-price">⭐ ${gift.stars} звезд</div>
+                        <span class="rarity-badge" style="background: ${rarityColor}; color: white;">
+                            ${rarityName}
+                        </span>
+                    </div>
+                `;
+                
+                container.appendChild(giftCard);
+            }
+        }
+        
+        function loadInventory() {
+            const container = document.getElementById('inventoryGrid');
+            container.innerHTML = '';
+            
+            if (Object.keys(userData.inventory).length === 0) {
+                container.innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
+                        <div style="font-size: 64px; margin-bottom: 20px;">📦</div>
+                        <h3>Инвентарь пуст</h3>
+                        <p>Получите первый подарок от друзей!</p>
+                    </div>
+                `;
                 return;
             }
             
-            gameState.balance -= 50;
-            updateBalance();
+            // Сортировка по редкости и стоимости
+            const sortedInventory = Object.entries(userData.inventory)
+                .map(([giftId, count]) => [giftId, gifts[giftId], count])
+                .filter(([,gift,]) => gift)
+                .sort((a, b) => {
+                    const rarityOrder = {"ultra_rare": 6, "mythic": 5, "legendary": 4, "epic": 3, "rare": 2, "common": 1};
+                    return rarityOrder[b[1].rarity] - rarityOrder[a[1].rarity] || b[1].stars - a[1].stars;
+                });
             
-            const gifts = ['🎂 Торт', '💚 Зеленая звезда', '🎆 Фейерверк', '💙 Синяя звезда', '❤️ Красное сердце'];
-            const gift = gifts[Math.floor(Math.random() * gifts.length)];
-            
-            alert(`Поздравляем! Вы получили: ${gift}`);
+            for (let [giftId, gift, count] of sortedInventory) {
+                const inventoryItem = document.createElement('div');
+                inventoryItem.className = 'inventory-item';
+                inventoryItem.onclick = () => showGiftModal(giftId, 'inventory');
+                
+                const rarityColor = rarityColors[gift.rarity];
+                
+                inventoryItem.innerHTML = `
+                    <div class="inventory-emoji">${gift.emoji}</div>
+                    <div style="font-size: 14px; font-weight: bold;">${gift.name}</div>
+                    <div style="font-size: 12px; opacity: 0.8;">⭐ ${gift.stars}</div>
+                    <div class="inventory-count">×${count}</div>
+                `;
+                
+                inventoryItem.style.border = `2px solid ${rarityColor}`;
+                container.appendChild(inventoryItem);
+            }
         }
         
-        updateBalance();
+        function loadLeaderboard() {
+            const container = document.getElementById('leaderboardList');
+            container.innerHTML = '<div class="loading">Загрузка рейтинга...</div>';
+            
+            fetch('/api/leaderboard')
+                .then(response => response.json())
+                .then(data => {
+                    container.innerHTML = '';
+                    
+                    if (data.success && data.leaderboard.length > 0) {
+                        data.leaderboard.forEach((user, index) => {
+                            const item = document.createElement('div');
+                            item.className = 'leaderboard-item';
+                            
+                            let medal = '';
+                            if (index === 0) medal = '🥇';
+                            else if (index === 1) medal = '🥈';
+                            else if (index === 2) medal = '🥉';
+                            else medal = `${index + 1}.`;
+                            
+                            const isCurrentUser = user.id === userData.id;
+                            if (isCurrentUser) {
+                                item.style.background = 'rgba(255, 215, 0, 0.2)';
+                                item.style.border = '2px solid #FFD700';
+                            }
+                            
+                            item.innerHTML = `
+                                <div class="rank">${medal}</div>
+                                <div class="user-info">
+                                    <div style="font-weight: bold; ${isCurrentUser ? 'color: #FFD700;' : ''}">${user.first_name}</div>
+                                    <div style="font-size: 14px; opacity: 0.8;">🎁 ${user.gifts_sent} подарков</div>
+                                </div>
+                                <div style="font-size: 18px;">💫 ${user.level}</div>
+                            `;
+                            
+                            container.appendChild(item);
+                        });
+                    } else {
+                        container.innerHTML = `
+                            <div style="text-align: center; padding: 40px;">
+                                <div style="font-size: 64px; margin-bottom: 20px;">🏆</div>
+                                <h3>Рейтинг пуст</h3>
+                                <p>Станьте первым!</p>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    // Демо рейтинг
+                    container.innerHTML = '';
+                    const demoLeaderboard = [
+                        {id: 'user1', first_name: 'Алексей', gifts_sent: 127, level: 15},
+                        {id: 'user2', first_name: 'Мария', gifts_sent: 89, level: 12},
+                        {id: 'user3', first_name: 'Дмитрий', gifts_sent: 76, level: 11},
+                        {id: userData.id, first_name: userData.first_name, gifts_sent: userData.gifts_sent, level: userData.level},
+                        {id: 'user4', first_name: 'Анна', gifts_sent: 45, level: 8},
+                    ];
+                    
+                    demoLeaderboard.sort((a, b) => b.gifts_sent - a.gifts_sent);
+                    
+                    demoLeaderboard.forEach((user, index) => {
+                        const item = document.createElement('div');
+                        item.className = 'leaderboard-item';
+                        
+                        let medal = '';
+                        if (index === 0) medal = '🥇';
+                        else if (index === 1) medal = '🥈';
+                        else if (index === 2) medal = '🥉';
+                        else medal = `${index + 1}.`;
+                        
+                        const isCurrentUser = user.id === userData.id;
+                        if (isCurrentUser) {
+                            item.style.background = 'rgba(255, 215, 0, 0.2)';
+                            item.style.border = '2px solid #FFD700';
+                        }
+                        
+                        item.innerHTML = `
+                            <div class="rank">${medal}</div>
+                            <div class="user-info">
+                                <div style="font-weight: bold; ${isCurrentUser ? 'color: #FFD700;' : ''}">${user.first_name}</div>
+                                <div style="font-size: 14px; opacity: 0.8;">🎁 ${user.gifts_sent} подарков</div>
+                            </div>
+                            <div style="font-size: 18px;">💫 ${user.level}</div>
+                        `;
+                        
+                        container.appendChild(item);
+                    });
+                });
+        }
+        
+        function filterGifts(category) {
+            // Обновить активную кнопку фильтра
+            document.querySelectorAll('.btn-secondary').forEach(btn => {
+                btn.style.background = 'rgba(255, 255, 255, 0.2)';
+            });
+            event.target.style.background = 'rgba(255, 255, 255, 0.3)';
+            
+            loadGifts('send', category);
+        }
+        
+        function showGiftModal(giftId, mode) {
+            const gift = gifts[giftId];
+            if (!gift) return;
+            
+            const modal = document.getElementById('giftModal');
+            const content = document.getElementById('giftModalContent');
+            
+            const rarityColor = rarityColors[gift.rarity];
+            const rarityName = rarityNames[gift.rarity];
+            
+            let actionButton = '';
+            if (mode === 'send' || mode === 'shop') {
+                actionButton = `
+                    <button class="btn-primary" onclick="sendGift('${giftId}')">
+                        🎁 Отправить подарок (${gift.stars} ⭐)
+                    </button>
+                `;
+            } else if (mode === 'inventory') {
+                const count = userData.inventory[giftId] || 0;
+                actionButton = `
+                    <p style="margin: 20px 0; font-size: 16px;">📦 У вас: ${count} шт.</p>
+                    <button class="btn-primary" onclick="sendGift('${giftId}')">
+                        🎁 Отправить этот подарок
+                    </button>
+                `;
+            }
+            
+            content.innerHTML = `
+                <div style="font-size: 80px; margin-bottom: 20px;">${gift.emoji}</div>
+                <h2 style="margin-bottom: 10px;">${gift.name}</h2>
+                <div style="background: ${rarityColor}; color: white; padding: 8px 16px; border-radius: 20px; display: inline-block; margin-bottom: 20px;">
+                    ${rarityName}
+                </div>
+                <p style="font-size: 18px; margin: 20px 0;">⭐ ${gift.stars} звезд</p>
+                <p style="opacity: 0.8; margin-bottom: 30px;">Категория: ${gift.category}</p>
+                ${actionButton}
+            `;
+            
+            modal.style.display = 'block';
+        }
+        
+        function closeGiftModal() {
+            document.getElementById('giftModal').style.display = 'none';
+        }
+        
+        function sendGift(giftId) {
+            const gift = gifts[giftId];
+            
+            // Отправка подарка на сервер
+            fetch('/api/send-gift', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    user_id: userData.id,
+                    gift_id: giftId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Показываем ссылку для отправки
+                    const content = document.getElementById('giftModalContent');
+                    content.innerHTML = `
+                        <div style="font-size: 80px; margin-bottom: 20px;">🎁</div>
+                        <h2>Подарок готов к отправке!</h2>
+                        <p style="margin: 20px 0;">${gift.emoji} ${gift.name}</p>
+                        
+                        <div style="background: rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; margin: 20px 0;">
+                            <p style="margin-bottom: 10px; font-size: 14px;">Ссылка для отправки:</p>
+                            <input type="text" value="${data.gift_link}" readonly 
+                                   style="width: 100%; padding: 10px; border: none; border-radius: 8px; background: rgba(0,0,0,0.2); color: white; text-align: center;"
+                                   onclick="this.select()">
+                        </div>
+                        
+                        <p style="font-size: 14px; opacity: 0.8; margin: 20px 0;">
+                            📋 Скопируйте ссылку и отправьте другу<br>
+                            ⏰ Ссылка действует 24 часа
+                        </p>
+                        
+                        <button class="btn-primary" onclick="copyGiftLink('${data.gift_link}')">
+                            📋 Скопировать ссылку
+                        </button>
+                    `;
+                } else {
+                    alert('Ошибка: ' + data.message);
+                }
+            })
+            .catch(error => {
+                // Демо режим - создаем локальную ссылку
+                const giftCode = Math.random().toString(36).substr(2, 8);
+                const giftLink = `https://t.me/YOUR_BOT_USERNAME?start=gift_${giftCode}`;
+                
+                const content = document.getElementById('giftModalContent');
+                content.innerHTML = `
+                    <div style="font-size: 80px; margin-bottom: 20px;">🎁</div>
+                    <h2>Подарок готов к отправке!</h2>
+                    <p style="margin: 20px 0;">${gift.emoji} ${gift.name}</p>
+                    
+                    <div style="background: rgba(255,255,255,0.1); border-radius: 12px; padding: 15px; margin: 20px 0;">
+                        <p style="margin-bottom: 10px; font-size: 14px;">Ссылка для отправки:</p>
+                        <input type="text" value="${giftLink}" readonly 
+                               style="width: 100%; padding: 10px; border: none; border-radius: 8px; background: rgba(0,0,0,0.2); color: white; text-align: center; font-size: 12px;"
+                               onclick="this.select()">
+                    </div>
+                    
+                    <p style="font-size: 14px; opacity: 0.8; margin: 20px 0;">
+                        📋 Скопируйте ссылку и отправьте другу<br>
+                        ⏰ Ссылка действует 24 часа
+                    </p>
+                    
+                    <button class="btn-primary" onclick="copyGiftLink('${giftLink}')">
+                        📋 Скопировать ссылку
+                    </button>
+                `;
+                
+                // Обновляем статистику локально в демо режиме
+                userData.gifts_sent++;
+                updateUI();
+            });
+        }
+        
+        function copyGiftLink(link) {
+            navigator.clipboard.writeText(link).then(() => {
+                if (tg) {
+                    tg.showAlert('Ссылка скопирована! Отправьте её другу.');
+                } else {
+                    alert('Ссылка скопирована!');
+                }
+                closeGiftModal();
+                showPage('home');
+            }).catch(() => {
+                // Fallback для старых браузеров
+                const textArea = document.createElement('textarea');
+                textArea.value = link;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                if (tg) {
+                    tg.showAlert('Ссылка готова к отправке!');
+                } else {
+                    alert('Ссылка готова к отправке!');
+                }
+                closeGiftModal();
+                showPage('home');
+            });
+        }
+        
+        // Закрытие модального окна при клике вне его
+        document.getElementById('giftModal').onclick = function(event) {
+            if (event.target === this) {
+                closeGiftModal();
+            }
+        }
+        
+        // Инициализация при загрузке
+        document.addEventListener('DOMContentLoaded', init);
+        
+        // Telegram WebApp события
+        if (tg) {
+            tg.onEvent('backButtonClicked', () => {
+                const activePageId = document.querySelector('.page.active').id;
+                if (activePageId !== 'home') {
+                    showPage('home');
+                } else {
+                    tg.close();
+                }
+            });
+            
+            // Показываем кнопку "Назад" когда не на главной странице
+            const observer = new MutationObserver(() => {
+                const activePageId = document.querySelector('.page.active').id;
+                if (activePageId !== 'home') {
+                    tg.BackButton.show();
+                } else {
+                    tg.BackButton.hide();
+                }
+            });
+            
+            observer.observe(document.body, {
+                subtree: true,
+                attributeFilter: ['class']
+            });
+        }
     </script>
 </body>
-</html>'''
-    return html_content
+</html>
+    ''')
 
+# API маршруты
+@app.route('/api/user/<user_id>')
+def get_user(user_id):
+    user_data = get_user_data(user_id)
+    return jsonify({"success": True, "user": user_data})
+
+@app.route('/api/send-gift', methods=['POST'])
+def api_send_gift():
+    try:
+        data = request.get_json()
+        user_id = str(data.get('user_id'))
+        gift_id = data.get('gift_id')
+        
+        if gift_id not in TELEGRAM_GIFTS:
+            return jsonify({"success": False, "message": "Подарок не найден"})
+        
+        # Создаем код подарка
+        gift_code = str(uuid.uuid4())[:8]
+        
+        # Сохраняем в активные подарки
+        active_gifts[gift_code] = {
+            "sender_id": user_id,
+            "gift_id": gift_id,
+            "created_at": time.time()
+        }
+        
+        # Создаем ссылку
+        bot_username = "your_bot_username"  # Замените на реальное имя бота
+        gift_link = f"https://t.me/{bot_username}?start=gift_{gift_code}"
+        
+        return jsonify({
+            "success": True,
+            "gift_link": gift_link,
+            "gift_code": gift_code
+        })
+        
+    except Exception as e:
+        logger.error(f"Send gift API error: {e}")
+        return jsonify({"success": False, "message": "Ошибка сервера"})
+
+@app.route('/api/leaderboard')
+def get_leaderboard():
+    try:
+        # Кэширование рейтинга на 5 минут
+        current_time = time.time()
+        if current_time - leaderboard_cache["last_update"] > 300:  # 5 минут
+            sorted_users = sorted(
+                [(uid, data) for uid, data in users.items()],
+                key=lambda x: x[1]['gifts_sent'],
+                reverse=True
+            )[:50]  # Топ 50
+            
+            leaderboard_cache["data"] = [
+                {
+                    "id": uid,
+                    "first_name": data.get('first_name', 'User'),
+                    "gifts_sent": data['gifts_sent'],
+                    "level": data['level'],
+                    "total_value": data.get('total_value', 0)
+                }
+                for uid, data in sorted_users
+            ]
+            leaderboard_cache["last_update"] = current_time
+        
+        return jsonify({
+            "success": True,
+            "leaderboard": leaderboard_cache["data"]
+        })
+        
+    except Exception as e:
+        logger.error(f"Leaderboard API error: {e}")
+        return jsonify({"success": False, "message": "Ошибка загрузки рейтинга"})
+
+# Webhook обработчик
 @app.route(f"/{TOKEN}", methods=['POST'])
 def webhook():
     try:
@@ -681,306 +1274,115 @@ def webhook():
             chat_id = message['chat']['id']
             text = message.get('text', '')
             user_name = message['from'].get('first_name', 'User')
+            username = message['from'].get('username')
             
             if text.startswith('/start'):
-                # Обработка реферальной ссылки
-                referrer_id = None
                 if ' ' in text:
-                    try:
-                        referrer_id = int(text.split()[1])
-                    except:
-                        pass
-                handle_start(chat_id, user_name, referrer_id)
+                    param = text.split()[1]
+                    if param.startswith('gift_'):
+                        gift_code = param[5:]
+                        handle_receive_gift(chat_id, user_name, username, gift_code)
+                        return jsonify({"ok": True})
+                    elif param.startswith('ref_'):
+                        referrer_id = param[4:]
+                        handle_start(chat_id, user_name, username, referrer_id)
+                        return jsonify({"ok": True})
+                
+                handle_start(chat_id, user_name, username)
                 
         elif 'callback_query' in update:
             callback = update['callback_query']
             chat_id = callback['message']['chat']['id']
-            message_id = callback['message']['message_id']
             data = callback['data']
             user_id = callback['from']['id']
-            user_name = callback['from'].get('first_name', 'User')
             
-            handle_callback(chat_id, message_id, data, user_id, user_name, callback['id'])
+            if data == "referrals":
+                user_data = get_user_data(user_id)
+                bot_username = "your_bot_username"  # Замените на реальное
+                ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+                
+                text = f"""👥 <b>Реферальная программа</b>
+
+🔗 <b>Ваша ссылка:</b>
+`{ref_link}`
+
+📊 <b>Приглашено:</b> {len(user_data['referrals'])}
+🎁 <b>Бонус за реферала:</b> 100 XP"""
+
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "🔙 Назад", "callback_data": "back"}]
+                    ]
+                }
+                
+                send_message(chat_id, text, keyboard)
             
+            elif data == "help":
+                text = """ℹ️ <b>Как пользоваться GiftUp</b>
+
+🎁 <b>Отправка подарков:</b>
+1. Нажмите "Play" 
+2. Выберите "Отправить"
+3. Выберите подарок
+4. Скопируйте ссылку
+5. Отправьте другу
+
+🎒 <b>Инвентарь:</b>
+• Все полученные подарки
+• Сортировка по редкости
+• Просмотр деталей
+
+🏆 <b>Рейтинг:</b>
+• Топ отправителей
+• Ваша позиция
+• Уровни игроков"""
+
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "🔙 Назад", "callback_data": "back"}]
+                    ]
+                }
+                
+                send_message(chat_id, text, keyboard)
+            
+            elif data == "back":
+                user_data = get_user_data(user_id)
+                text = f"""🎁 <b>GiftUp</b>
+
+👋 Привет! Отправляйте подарки друзьям в Telegram.
+
+🚀 Нажмите "Play" чтобы начать!"""
+                
+                send_message(chat_id, text, main_menu_keyboard())
+        
         return jsonify({"ok": True})
+        
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return jsonify({"ok": False})
 
-def handle_callback(chat_id, message_id, data, user_id, user_name, callback_id):
-    try:
-        user_data = get_user_data(user_id)
-        
-        if data == "play_crash":
-            handle_crash_game(chat_id, message_id, user_id)
+# Очистка устаревших подарков
+def cleanup_expired_gifts():
+    while True:
+        try:
+            current_time = time.time()
+            expired_gifts = []
             
-        elif data == "balance":
-            text = f"""💰 <b>Ваш баланс</b>
-
-💎 <b>Монеты:</b> {user_data['balance']}
-🎯 <b>Уровень:</b> {user_data['level']} ({user_data['experience']} XP)
-
-📊 <b>Статистика игр:</b>
-🎮 Игр сыграно: {user_data['games_played']}
-✅ Выиграно: {user_data['games_won']}
-❌ Проиграно: {user_data['games_lost']}
-💰 Общий выигрыш: {user_data['total_won']}"""
-
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🔙 Назад", "callback_data": "main_menu"}]
-                ]
-            }
-            edit_message(chat_id, message_id, text, keyboard)
+            for gift_id, gift_info in active_gifts.items():
+                if current_time - gift_info["created_at"] > 24 * 3600:  # 24 часа
+                    expired_gifts.append(gift_id)
             
-        elif data == "gift_shop":
-            handle_gift_shop(chat_id, message_id, user_id)
+            for gift_id in expired_gifts:
+                del active_gifts[gift_id]
+                logger.info(f"Removed expired gift: {gift_id}")
             
-        elif data == "daily_bonus":
-            handle_daily_bonus(chat_id, message_id, user_id)
+            time.sleep(1800)  # 30 минут
             
-        elif data == "stats":
-            winrate = round((user_data['games_won'] / max(user_data['games_played'], 1)) * 100, 1)
-            text = f"""📊 <b>Статистика {user_name}</b>
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
+            time.sleep(300)
 
-🎮 <b>Игры:</b>
-• Сыграно: {user_data['games_played']}
-• Выиграно: {user_data['games_won']}
-• Проиграно: {user_data['games_lost']}
-• Винрейт: {winrate}%
-
-💰 <b>Финансы:</b>
-• Поставлено: {user_data['total_bet']}
-• Выиграно: {user_data['total_won']}
-• Проиграно: {user_data['total_lost']}
-
-🎁 <b>Подарки:</b>
-• Кейсов открыто: {user_data['cases_opened']}
-• Отправлено: {user_data['gifts_sent']}
-• Получено: {user_data['gifts_received']}
-
-👥 <b>Рефералы:</b> {len(user_data['referrals'])}"""
-
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🔙 Назад", "callback_data": "main_menu"}]
-                ]
-            }
-            edit_message(chat_id, message_id, text, keyboard)
-            
-        elif data == "main_menu":
-            text = f"""🎁 <b>Главное меню</b>
-
-💰 <b>Баланс:</b> {user_data['balance']} монет
-🎯 <b>Уровень:</b> {user_data['level']} ({user_data['experience']} XP)
-
-Выберите действие:"""
-            edit_message(chat_id, message_id, text, main_menu_keyboard())
-            
-        elif data.startswith("bet_"):
-            amount = int(data.split("_")[1])
-            handle_crash_bet(chat_id, message_id, user_id, amount, callback_id)
-            
-        elif data == "crash_cashout":
-            handle_crash_cashout(chat_id, message_id, user_id, callback_id)
-            
-        elif data.startswith("open_case_"):
-            case_id = data.replace("open_case_", "")
-            handle_open_case(chat_id, message_id, user_id, case_id, callback_id)
-            
-        answer_callback(callback_id)
-        
-    except Exception as e:
-        logger.error(f"Callback error: {e}")
-        answer_callback(callback_id, "❌ Произошла ошибка")
-
-def handle_crash_game(chat_id, message_id, user_id):
-    global current_crash_game
-    
-    if current_crash_game is None:
-        text = "🔄 Игра загружается..."
-    elif current_crash_game.is_running:
-        text = f"""🚀 <b>Crash Game - Игра идет!</b>
-
-📈 <b>Множитель:</b> {current_crash_game.multiplier:.2f}x
-🎮 <b>Игроков в игре:</b> {len(current_crash_game.bets)}
-
-⚡ Игра может крашнуться в любой момент!"""
-    else:
-        text = """🚀 <b>Crash Game</b>
-
-🎯 <b>Как играть:</b>
-• Сделайте ставку
-• Множитель растет с 1.00x
-• Выведите до краша!
-
-💡 <b>Совет:</b> Начните с малых ставок"""
-
-    keyboard = {
-        "inline_keyboard": [
-            [{"text": "💰 50", "callback_data": "bet_50"}, {"text": "💰 100", "callback_data": "bet_100"}],
-            [{"text": "💰 250", "callback_data": "bet_250"}, {"text": "💰 500", "callback_data": "bet_500"}],
-            [{"text": "💸 Вывести", "callback_data": "crash_cashout"}],
-            [{"text": "🔄 Обновить", "callback_data": "play_crash"}],
-            [{"text": "🔙 Назад", "callback_data": "main_menu"}]
-        ]
-    }
-    
-    edit_message(chat_id, message_id, text, keyboard)
-
-def handle_crash_bet(chat_id, message_id, user_id, amount, callback_id):
-    global current_crash_game
-    
-    if current_crash_game is None:
-        answer_callback(callback_id, "❌ Игра не найдена")
-        return
-    
-    success, message = current_crash_game.place_bet(user_id, amount)
-    answer_callback(callback_id, message)
-    
-    if success:
-        handle_crash_game(chat_id, message_id, user_id)
-
-def handle_crash_cashout(chat_id, message_id, user_id, callback_id):
-    global current_crash_game
-    
-    if current_crash_game is None:
-        answer_callback(callback_id, "❌ Игра не найдена")
-        return
-    
-    success, message = current_crash_game.cashout(user_id)
-    answer_callback(callback_id, message)
-    
-    if success:
-        handle_crash_game(chat_id, message_id, user_id)
-
-def handle_gift_shop(chat_id, message_id, user_id):
-    text = """🎁 <b>Магазин подарков</b>
-
-🎰 Открывайте кейсы и получайте редкие подарки!
-
-💎 Каждый кейс содержит уникальные предметы с разной редкостью."""
-
-    keyboard = {
-        "inline_keyboard": []
-    }
-    
-    for case_id, case_info in list(CASES.items())[:6]:  # Показываем первые 6 кейсов
-        keyboard["inline_keyboard"].append([{
-            "text": f"{case_info['emoji']} {case_info['name']} - {case_info['price']} монет",
-            "callback_data": f"open_case_{case_id}"
-        }])
-    
-    keyboard["inline_keyboard"].append([{"text": "🔙 Назад", "callback_data": "main_menu"}])
-    
-    edit_message(chat_id, message_id, text, keyboard)
-
-def handle_open_case(chat_id, message_id, user_id, case_id, callback_id):
-    user_data = get_user_data(user_id)
-    
-    if case_id not in CASES:
-        answer_callback(callback_id, "❌ Кейс не найден")
-        return
-    
-    case = CASES[case_id]
-    
-    if user_data['balance'] < case['price']:
-        answer_callback(callback_id, "❌ Недостаточно монет")
-        return
-    
-    # Списываем стоимость кейса
-    user_data['balance'] -= case['price']
-    user_data['cases_opened'] += 1
-    
-    # Получаем случайный предмет
-    item = get_random_item_from_case(case)
-    gift = REAL_TELEGRAM_GIFTS[item['id']]
-    
-    # Добавляем в инвентарь
-    if item['id'] not in user_data['inventory']:
-        user_data['inventory'][item['id']] = 0
-    user_data['inventory'][item['id']] += 1
-    
-    # Добавляем опыт
-    user_data['experience'] += gift['stars'] // 10
-    
-    rarity_emoji = {
-        'common': '⚪',
-        'uncommon': '🟢', 
-        'rare': '🔵',
-        'epic': '🟣',
-        'legendary': '🟠',
-        'mythic': '🔴'
-    }
-    
-    text = f"""🎉 <b>Кейс открыт!</b>
-
-{gift['emoji']} <b>{gift['name']}</b>
-💫 <b>Звезд:</b> {gift['stars']}
-{rarity_emoji.get(gift['rarity'], '⚪')} <b>Редкость:</b> {gift['rarity'].title()}
-
-💰 <b>Баланс:</b> {user_data['balance']} монет
-📦 <b>Кейсов открыто:</b> {user_data['cases_opened']}"""
-
-    keyboard = {
-        "inline_keyboard": [
-            [{"text": "🎁 Открыть еще", "callback_data": f"open_case_{case_id}"}],
-            [{"text": "🛍 Магазин", "callback_data": "gift_shop"}],
-            [{"text": "🔙 Главное меню", "callback_data": "main_menu"}]
-        ]
-    }
-    
-    edit_message(chat_id, message_id, text, keyboard)
-    answer_callback(callback_id, f"🎉 Получен {gift['name']}!")
-
-def handle_daily_bonus(chat_id, message_id, user_id):
-    user_data = get_user_data(user_id)
-    now = datetime.now()
-    
-    if user_data['last_bonus']:
-        last_bonus = datetime.fromisoformat(user_data['last_bonus'])
-        if now - last_bonus < timedelta(hours=24):
-            remaining = timedelta(hours=24) - (now - last_bonus)
-            hours = remaining.seconds // 3600
-            minutes = (remaining.seconds % 3600) // 60
-            
-            text = f"""⏰ <b>Ежедневный бонус</b>
-
-❌ Вы уже получали бонус сегодня!
-
-🕐 Следующий бонус через: {hours}ч {minutes}м"""
-            
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🔙 Назад", "callback_data": "main_menu"}]
-                ]
-            }
-            edit_message(chat_id, message_id, text, keyboard)
-            return
-    
-    # Выдаем бонус
-    bonus_amount = random.randint(100, 500)
-    user_data['balance'] += bonus_amount
-    user_data['last_bonus'] = now.isoformat()
-    user_data['experience'] += 10
-    
-    text = f"""🎁 <b>Ежедневный бонус получен!</b>
-
-💰 <b>Получено:</b> {bonus_amount} монет
-⭐ <b>Получено:</b> 10 опыта
-
-💎 <b>Текущий баланс:</b> {user_data['balance']} монет
-
-🕐 <b>Следующий бонус через:</b> 24 часа"""
-
-    keyboard = {
-        "inline_keyboard": [
-            [{"text": "🔙 Назад", "callback_data": "main_menu"}]
-        ]
-    }
-    edit_message(chat_id, message_id, text, keyboard)
-
-# Установка вебхука при запуске
+# Установка webhook
 def set_webhook():
     url = f"{API_URL}/setWebhook"
     webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
@@ -992,6 +1394,11 @@ def set_webhook():
         logger.info(f"Webhook set result: {result}")
     except Exception as e:
         logger.error(f"Failed to set webhook: {e}")
+
+# Запуск фоновых процессов
+cleanup_thread = threading.Thread(target=cleanup_expired_gifts)
+cleanup_thread.daemon = True
+cleanup_thread.start()
 
 if __name__ == '__main__':
     set_webhook()
