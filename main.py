@@ -576,3 +576,424 @@ def webapp():
         </div>
         
         <div class="game-area">
+            <h3>🎁 Магазин подарков</h3>
+            <p>Открывайте кейсы и получайте редкие подарки!</p>
+            <button class="button" onclick="openCase()">Открыть кейс (50 монет)</button>
+        </div>
+    </div>
+    
+    <script>
+        let gameState = {
+            balance: 1000,
+            currentBet: 0,
+            isPlaying: false
+        };
+        
+        function updateBalance() {
+            document.getElementById('balance').textContent = gameState.balance;
+        }
+        
+        function placeBet(amount) {
+            if (gameState.isPlaying) {
+                alert('Игра уже идет!');
+                return;
+            }
+            
+            if (gameState.balance < amount) {
+                alert('Недостаточно монет!');
+                return;
+            }
+            
+            gameState.balance -= amount;
+            gameState.currentBet = amount;
+            gameState.isPlaying = true;
+            
+            updateBalance();
+            document.getElementById('cashoutBtn').disabled = false;
+            document.getElementById('status').textContent = 'Игра идет...';
+            
+            // Симуляция игры
+            setTimeout(() => {
+                if (Math.random() < 0.7) {
+                    // Проиграл
+                    gameState.isPlaying = false;
+                    document.getElementById('cashoutBtn').disabled = true;
+                    document.getElementById('status').textContent = 'Краш! Попробуйте еще раз';
+                    gameState.currentBet = 0;
+                } else {
+                    // Выиграл
+                    const multiplier = 1.5 + Math.random() * 2;
+                    const winAmount = Math.floor(gameState.currentBet * multiplier);
+                    gameState.balance += winAmount;
+                    gameState.isPlaying = false;
+                    gameState.currentBet = 0;
+                    
+                    updateBalance();
+                    document.getElementById('cashoutBtn').disabled = true;
+                    document.getElementById('status').textContent = `Выигрыш! +${winAmount} монет`;
+                }
+            }, 3000 + Math.random() * 5000);
+        }
+        
+        function cashOut() {
+            if (!gameState.isPlaying) return;
+            
+            const multiplier = 1.2 + Math.random() * 1.5;
+            const winAmount = Math.floor(gameState.currentBet * multiplier);
+            
+            gameState.balance += winAmount;
+            gameState.isPlaying = false;
+            gameState.currentBet = 0;
+            
+            updateBalance();
+            document.getElementById('cashoutBtn').disabled = true;
+            document.getElementById('status').textContent = `Вывод! +${winAmount} монет`;
+        }
+        
+        function openCase() {
+            if (gameState.balance < 50) {
+                alert('Недостаточно монет для открытия кейса!');
+                return;
+            }
+            
+            gameState.balance -= 50;
+            updateBalance();
+            
+            const gifts = ['🎂 Торт', '💚 Зеленая звезда', '🎆 Фейерверк', '💙 Синяя звезда', '❤️ Красное сердце'];
+            const gift = gifts[Math.floor(Math.random() * gifts.length)];
+            
+            alert(`Поздравляем! Вы получили: ${gift}`);
+        }
+        
+        updateBalance();
+    </script>
+</body>
+</html>'''
+    return html_content
+
+@app.route(f"/{TOKEN}", methods=['POST'])
+def webhook():
+    try:
+        update = request.get_json()
+        
+        if 'message' in update:
+            message = update['message']
+            chat_id = message['chat']['id']
+            text = message.get('text', '')
+            user_name = message['from'].get('first_name', 'User')
+            
+            if text.startswith('/start'):
+                # Обработка реферальной ссылки
+                referrer_id = None
+                if ' ' in text:
+                    try:
+                        referrer_id = int(text.split()[1])
+                    except:
+                        pass
+                handle_start(chat_id, user_name, referrer_id)
+                
+        elif 'callback_query' in update:
+            callback = update['callback_query']
+            chat_id = callback['message']['chat']['id']
+            message_id = callback['message']['message_id']
+            data = callback['data']
+            user_id = callback['from']['id']
+            user_name = callback['from'].get('first_name', 'User')
+            
+            handle_callback(chat_id, message_id, data, user_id, user_name, callback['id'])
+            
+        return jsonify({"ok": True})
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return jsonify({"ok": False})
+
+def handle_callback(chat_id, message_id, data, user_id, user_name, callback_id):
+    try:
+        user_data = get_user_data(user_id)
+        
+        if data == "play_crash":
+            handle_crash_game(chat_id, message_id, user_id)
+            
+        elif data == "balance":
+            text = f"""💰 <b>Ваш баланс</b>
+
+💎 <b>Монеты:</b> {user_data['balance']}
+🎯 <b>Уровень:</b> {user_data['level']} ({user_data['experience']} XP)
+
+📊 <b>Статистика игр:</b>
+🎮 Игр сыграно: {user_data['games_played']}
+✅ Выиграно: {user_data['games_won']}
+❌ Проиграно: {user_data['games_lost']}
+💰 Общий выигрыш: {user_data['total_won']}"""
+
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🔙 Назад", "callback_data": "main_menu"}]
+                ]
+            }
+            edit_message(chat_id, message_id, text, keyboard)
+            
+        elif data == "gift_shop":
+            handle_gift_shop(chat_id, message_id, user_id)
+            
+        elif data == "daily_bonus":
+            handle_daily_bonus(chat_id, message_id, user_id)
+            
+        elif data == "stats":
+            winrate = round((user_data['games_won'] / max(user_data['games_played'], 1)) * 100, 1)
+            text = f"""📊 <b>Статистика {user_name}</b>
+
+🎮 <b>Игры:</b>
+• Сыграно: {user_data['games_played']}
+• Выиграно: {user_data['games_won']}
+• Проиграно: {user_data['games_lost']}
+• Винрейт: {winrate}%
+
+💰 <b>Финансы:</b>
+• Поставлено: {user_data['total_bet']}
+• Выиграно: {user_data['total_won']}
+• Проиграно: {user_data['total_lost']}
+
+🎁 <b>Подарки:</b>
+• Кейсов открыто: {user_data['cases_opened']}
+• Отправлено: {user_data['gifts_sent']}
+• Получено: {user_data['gifts_received']}
+
+👥 <b>Рефералы:</b> {len(user_data['referrals'])}"""
+
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🔙 Назад", "callback_data": "main_menu"}]
+                ]
+            }
+            edit_message(chat_id, message_id, text, keyboard)
+            
+        elif data == "main_menu":
+            text = f"""🎁 <b>Главное меню</b>
+
+💰 <b>Баланс:</b> {user_data['balance']} монет
+🎯 <b>Уровень:</b> {user_data['level']} ({user_data['experience']} XP)
+
+Выберите действие:"""
+            edit_message(chat_id, message_id, text, main_menu_keyboard())
+            
+        elif data.startswith("bet_"):
+            amount = int(data.split("_")[1])
+            handle_crash_bet(chat_id, message_id, user_id, amount, callback_id)
+            
+        elif data == "crash_cashout":
+            handle_crash_cashout(chat_id, message_id, user_id, callback_id)
+            
+        elif data.startswith("open_case_"):
+            case_id = data.replace("open_case_", "")
+            handle_open_case(chat_id, message_id, user_id, case_id, callback_id)
+            
+        answer_callback(callback_id)
+        
+    except Exception as e:
+        logger.error(f"Callback error: {e}")
+        answer_callback(callback_id, "❌ Произошла ошибка")
+
+def handle_crash_game(chat_id, message_id, user_id):
+    global current_crash_game
+    
+    if current_crash_game is None:
+        text = "🔄 Игра загружается..."
+    elif current_crash_game.is_running:
+        text = f"""🚀 <b>Crash Game - Игра идет!</b>
+
+📈 <b>Множитель:</b> {current_crash_game.multiplier:.2f}x
+🎮 <b>Игроков в игре:</b> {len(current_crash_game.bets)}
+
+⚡ Игра может крашнуться в любой момент!"""
+    else:
+        text = """🚀 <b>Crash Game</b>
+
+🎯 <b>Как играть:</b>
+• Сделайте ставку
+• Множитель растет с 1.00x
+• Выведите до краша!
+
+💡 <b>Совет:</b> Начните с малых ставок"""
+
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "💰 50", "callback_data": "bet_50"}, {"text": "💰 100", "callback_data": "bet_100"}],
+            [{"text": "💰 250", "callback_data": "bet_250"}, {"text": "💰 500", "callback_data": "bet_500"}],
+            [{"text": "💸 Вывести", "callback_data": "crash_cashout"}],
+            [{"text": "🔄 Обновить", "callback_data": "play_crash"}],
+            [{"text": "🔙 Назад", "callback_data": "main_menu"}]
+        ]
+    }
+    
+    edit_message(chat_id, message_id, text, keyboard)
+
+def handle_crash_bet(chat_id, message_id, user_id, amount, callback_id):
+    global current_crash_game
+    
+    if current_crash_game is None:
+        answer_callback(callback_id, "❌ Игра не найдена")
+        return
+    
+    success, message = current_crash_game.place_bet(user_id, amount)
+    answer_callback(callback_id, message)
+    
+    if success:
+        handle_crash_game(chat_id, message_id, user_id)
+
+def handle_crash_cashout(chat_id, message_id, user_id, callback_id):
+    global current_crash_game
+    
+    if current_crash_game is None:
+        answer_callback(callback_id, "❌ Игра не найдена")
+        return
+    
+    success, message = current_crash_game.cashout(user_id)
+    answer_callback(callback_id, message)
+    
+    if success:
+        handle_crash_game(chat_id, message_id, user_id)
+
+def handle_gift_shop(chat_id, message_id, user_id):
+    text = """🎁 <b>Магазин подарков</b>
+
+🎰 Открывайте кейсы и получайте редкие подарки!
+
+💎 Каждый кейс содержит уникальные предметы с разной редкостью."""
+
+    keyboard = {
+        "inline_keyboard": []
+    }
+    
+    for case_id, case_info in list(CASES.items())[:6]:  # Показываем первые 6 кейсов
+        keyboard["inline_keyboard"].append([{
+            "text": f"{case_info['emoji']} {case_info['name']} - {case_info['price']} монет",
+            "callback_data": f"open_case_{case_id}"
+        }])
+    
+    keyboard["inline_keyboard"].append([{"text": "🔙 Назад", "callback_data": "main_menu"}])
+    
+    edit_message(chat_id, message_id, text, keyboard)
+
+def handle_open_case(chat_id, message_id, user_id, case_id, callback_id):
+    user_data = get_user_data(user_id)
+    
+    if case_id not in CASES:
+        answer_callback(callback_id, "❌ Кейс не найден")
+        return
+    
+    case = CASES[case_id]
+    
+    if user_data['balance'] < case['price']:
+        answer_callback(callback_id, "❌ Недостаточно монет")
+        return
+    
+    # Списываем стоимость кейса
+    user_data['balance'] -= case['price']
+    user_data['cases_opened'] += 1
+    
+    # Получаем случайный предмет
+    item = get_random_item_from_case(case)
+    gift = REAL_TELEGRAM_GIFTS[item['id']]
+    
+    # Добавляем в инвентарь
+    if item['id'] not in user_data['inventory']:
+        user_data['inventory'][item['id']] = 0
+    user_data['inventory'][item['id']] += 1
+    
+    # Добавляем опыт
+    user_data['experience'] += gift['stars'] // 10
+    
+    rarity_emoji = {
+        'common': '⚪',
+        'uncommon': '🟢', 
+        'rare': '🔵',
+        'epic': '🟣',
+        'legendary': '🟠',
+        'mythic': '🔴'
+    }
+    
+    text = f"""🎉 <b>Кейс открыт!</b>
+
+{gift['emoji']} <b>{gift['name']}</b>
+💫 <b>Звезд:</b> {gift['stars']}
+{rarity_emoji.get(gift['rarity'], '⚪')} <b>Редкость:</b> {gift['rarity'].title()}
+
+💰 <b>Баланс:</b> {user_data['balance']} монет
+📦 <b>Кейсов открыто:</b> {user_data['cases_opened']}"""
+
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "🎁 Открыть еще", "callback_data": f"open_case_{case_id}"}],
+            [{"text": "🛍 Магазин", "callback_data": "gift_shop"}],
+            [{"text": "🔙 Главное меню", "callback_data": "main_menu"}]
+        ]
+    }
+    
+    edit_message(chat_id, message_id, text, keyboard)
+    answer_callback(callback_id, f"🎉 Получен {gift['name']}!")
+
+def handle_daily_bonus(chat_id, message_id, user_id):
+    user_data = get_user_data(user_id)
+    now = datetime.now()
+    
+    if user_data['last_bonus']:
+        last_bonus = datetime.fromisoformat(user_data['last_bonus'])
+        if now - last_bonus < timedelta(hours=24):
+            remaining = timedelta(hours=24) - (now - last_bonus)
+            hours = remaining.seconds // 3600
+            minutes = (remaining.seconds % 3600) // 60
+            
+            text = f"""⏰ <b>Ежедневный бонус</b>
+
+❌ Вы уже получали бонус сегодня!
+
+🕐 Следующий бонус через: {hours}ч {minutes}м"""
+            
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🔙 Назад", "callback_data": "main_menu"}]
+                ]
+            }
+            edit_message(chat_id, message_id, text, keyboard)
+            return
+    
+    # Выдаем бонус
+    bonus_amount = random.randint(100, 500)
+    user_data['balance'] += bonus_amount
+    user_data['last_bonus'] = now.isoformat()
+    user_data['experience'] += 10
+    
+    text = f"""🎁 <b>Ежедневный бонус получен!</b>
+
+💰 <b>Получено:</b> {bonus_amount} монет
+⭐ <b>Получено:</b> 10 опыта
+
+💎 <b>Текущий баланс:</b> {user_data['balance']} монет
+
+🕐 <b>Следующий бонус через:</b> 24 часа"""
+
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "🔙 Назад", "callback_data": "main_menu"}]
+        ]
+    }
+    edit_message(chat_id, message_id, text, keyboard)
+
+# Установка вебхука при запуске
+def set_webhook():
+    url = f"{API_URL}/setWebhook"
+    webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
+    data = {"url": webhook_url}
+    
+    try:
+        response = requests.post(url, data=data, timeout=10)
+        result = response.json()
+        logger.info(f"Webhook set result: {result}")
+    except Exception as e:
+        logger.error(f"Failed to set webhook: {e}")
+
+if __name__ == '__main__':
+    set_webhook()
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
