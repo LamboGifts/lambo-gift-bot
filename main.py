@@ -401,93 +401,52 @@
                 }, 3000);
             }
             
-            // Дополнительные CSS стили для crash игры
-            const crashStyles = `
+            // Дополнительные стили будут добавлены через CSS
+            const additionalStyles = document.createElement("style");
+            additionalStyles.textContent = `
                 .rocket {
-                    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-                    font-size: 50px; transition: all 0.3s ease;
+                    position: absolute;
+                    bottom: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    font-size: 50px;
+                    transition: all 0.3s ease;
                     filter: drop-shadow(0 0 10px #ff6b35);
                 }
                 .rocket.flying {
                     animation: rocketFly 0.1s linear infinite;
                 }
-                @keyframes rocketFly {
-                    0% { transform: translateX(-50%) rotate(-2deg); }
-                    50% { transform: translateX(-50%) rotate(2deg); }
-                    100% { transform: translateX(-50%) rotate(-2deg); }
-                }
                 .explosion {
-                    display: none; position: absolute; font-size: 80px;
+                    display: none;
+                    position: absolute;
+                    font-size: 80px;
                     animation: explode 0.8s ease forwards;
                 }
-                @keyframes explode {
-                    0% { transform: scale(0.2); opacity: 1; }
-                    50% { transform: scale(1.5); opacity: 1; }
-                    100% { transform: scale(2.5); opacity: 0; }
-                }
                 .multiplier { 
-                    font-size: 48px; font-weight: bold; color: #00ff00; 
-                    text-shadow: 0 0 20px #00ff00; transition: all 0.1s ease;
-                    z-index: 10; position: relative;
+                    font-size: 48px;
+                    font-weight: bold;
+                    color: #00ff00;
+                    text-shadow: 0 0 20px #00ff00;
+                    transition: all 0.1s ease;
+                    z-index: 10;
+                    position: relative;
                 }
-                .multiplier.crashed { color: #ff0000; text-shadow: 0 0 20px #ff0000; }
-                .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-                .bet-input { 
-                    padding: 15px; background: rgba(255,255,255,0.1); 
-                    border: 1px solid rgba(255,255,255,0.3);
-                    border-radius: 15px; color: #fff; font-size: 16px; text-align: center;
-                }
-                .btn { 
-                    padding: 15px; border: none; border-radius: 15px; font-weight: bold; 
-                    font-size: 16px; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase;
-                }
-                .btn-bet { background: linear-gradient(45deg, #00ff00, #32cd32); color: #000; }
-                .btn-cashout { background: linear-gradient(45deg, #ff6b6b, #ff4757); color: #fff; }
-                .btn:disabled { background: rgba(255,255,255,0.3); cursor: not-allowed; }
-                .btn:hover:not(:disabled) { transform: translateY(-2px); }
-                .game-info { 
-                    background: rgba(255,255,255,0.1); padding: 15px; 
-                    border-radius: 15px; margin-bottom: 20px; 
+                .multiplier.crashed {
+                    color: #ff0000;
+                    text-shadow: 0 0 20px #ff0000;
                 }
                 .trail {
-                    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-                    width: 4px; height: 0; background: linear-gradient(to top, #ff6b35, transparent);
+                    position: absolute;
+                    bottom: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    width: 4px;
+                    height: 0;
+                    background: linear-gradient(to top, #ff6b35, transparent);
                     transition: height 0.1s ease;
                 }
-                .cases-grid {
-                    display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;
-                    margin-bottom: 20px;
-                }
-                .case-item {
-                    background: linear-gradient(135deg, #667eea, #764ba2);
-                    border-radius: 15px; padding: 20px; text-align: center;
-                    cursor: pointer; transition: all 0.3s ease; position: relative;
-                    overflow: hidden; border: 2px solid transparent;
-                }
-                .case-item:hover {
-                    transform: translateY(-5px); border-color: #ffd700;
-                    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-                }
-                .case-emoji {
-                    font-size: 40px; display: block; margin-bottom: 10px;
-                }
-                .case-name {
-                    font-weight: bold; margin-bottom: 5px; font-size: 14px;
-                }
-                .case-price {
-                    color: #ffd700; font-weight: bold;
-                }
-                .case-rarity {
-                    position: absolute; top: 5px; right: 5px;
-                    padding: 2px 8px; border-radius: 10px; font-size: 10px;
-                    font-weight: bold; text-transform: uppercase;
-                }
             `;
-            
-            // Добавляем стили в head
-            const styleSheet = document.createElement("style");
-            styleSheet.textContent = crashStyles;
-            document.head.appendChild(styleSheet);
+            document.head.appendChild(additionalStyles);
             
             updateDisplay();
             simulateGame();
